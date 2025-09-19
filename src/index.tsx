@@ -24,6 +24,36 @@ class NotifySphere {
   private static callback: NotificationCallback | null = null;
 
   // ✅ Permission check remains fully here
+
+  static async callbackOnpress(remoteMessage: any, status: string) {
+    console.log('remoteMessage413123', remoteMessage);
+    try {
+      const data = JSON.stringify({
+        notifiction_id: remoteMessage?.data?.notification_id, // 🔑 keep same spelling as backend expects
+        onPressStatus: 1,
+      });
+
+      const config = {
+        method: 'post' as const,
+        maxBodyLength: Infinity,
+        url: 'https://notifysphere.dothejob.in:3008/onpress/handle',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie':
+            'token=sYPT8POivlxfFSR54MWd3reaArvODMiIcM4KM39cqkXBLVu%2B8b1zV2csabU9byzo',
+        },
+        data,
+      };
+
+      const response = await axios.request(config);
+      console.log('onPress API response:', response);
+
+      NotifySphere.sendCallback(remoteMessage, status);
+    } catch (error) {
+      console.error('Error in callbackOnpress:', error);
+    }
+  }
+
   static async checkApplicationPermission(): Promise<boolean> {
     try {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -62,6 +92,7 @@ class NotifySphere {
 
     const fcmToken = await messaging().getToken();
     console.log('fcmToken31232', fcmToken, config);
+
     if (!config.appId) return;
 
     let subscription_id = await axios
@@ -86,8 +117,7 @@ class NotifySphere {
           maxBodyLength: Infinity,
         }
       )
-      .then((res: any) => {
-        console.log('res312331', res);
+      .then(async (res: any) => {
         return res.data.subscription_id;
       });
 
@@ -104,27 +134,26 @@ class NotifySphere {
       await NotifySphere.displayLocalNotification(remoteMessage);
     });
 
-    messaging().onNotificationOpenedApp((remoteMessage) => {
+    messaging().onNotificationOpenedApp(async (remoteMessage: any) => {
       console.log('data34234', remoteMessage);
-
-      NotifySphere.sendCallback(remoteMessage, 'opened');
+      NotifySphere.callbackOnpress(remoteMessage, 'opened');
     });
 
-    messaging()
-      .getInitialNotification()
-      .then((remoteMessage) => {
-        if (remoteMessage) NotifySphere.sendCallback(remoteMessage, 'initial');
-      });
+    // messaging()
+    //   .getInitialNotification()
+    //   .then((remoteMessage) => {
+    //    if (remoteMessage) NotifySphere.sendCallback(remoteMessage, 'initial');
+    //   });
 
     notifee.onForegroundEvent(({ type, detail }) => {
       if (type === EventType.PRESS) {
-        NotifySphere.sendCallback(detail.notification, 'press');
+        NotifySphere.callbackOnpress(detail.notification, 'opened');
       }
     });
 
     notifee.onBackgroundEvent(async ({ type, detail }) => {
       if (type === EventType.PRESS) {
-        NotifySphere.sendCallback(detail.notification, 'press');
+        NotifySphere.callbackOnpress(detail.notification, 'press');
       }
     });
   }
