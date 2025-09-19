@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "1044862818310",
+    "project_id": "billu-a105b",
+    "storage_bucket": "billu-a105b.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1044862818310:android:b5f59eb3eeb01844ff8b87",
+        "android_client_info": {
+          "package_name": "com.billu.care"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1044862818310-ei6d2vigauuu5r448d8ipna7k3jv5qav.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.billu.care",
+            "certificate_hash": "14fd3aade0a26e423976670d8f093cd0b4663c7d"
+          }
+        },
+        {
+          "client_id": "1044862818310-b71snda42itepchdeikv1en1ohe8v07k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDibZA0VR9RGLMVuLLiNiWp9yNocMKn9To"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1044862818310-b71snda42itepchdeikv1en1ohe8v07k.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1044862818310-v36vtm7q0mdtdd7lofd4jus8142thtmu.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.billu"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1044862818310:android:f912154652a3cb01ff8b87",
+        "android_client_info": {
+          "package_name": "com.billu.care.partner"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1044862818310-b71snda42itepchdeikv1en1ohe8v07k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDibZA0VR9RGLMVuLLiNiWp9yNocMKn9To"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1044862818310-b71snda42itepchdeikv1en1ohe8v07k.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1044862818310-v36vtm7q0mdtdd7lofd4jus8142thtmu.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.billu"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,4 +1,4 @@
-package notifysphere.example
+package com.billu.care
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
