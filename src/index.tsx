@@ -134,16 +134,18 @@ class NotifySphere {
       await NotifySphere.displayLocalNotification(remoteMessage);
     });
 
-    messaging().onNotificationOpenedApp(async (remoteMessage: any) => {
-      console.log('data34234', remoteMessage);
-      NotifySphere.callbackOnpress(remoteMessage, 'opened');
-    });
+    // messaging().onNotificationOpenedApp(async (remoteMessage: any) => {
+    //   console.log('data34234', remoteMessage);
+    //   NotifySphere.callbackOnpress(remoteMessage, 'opened');
+    // });
 
-    // messaging()
-    //   .getInitialNotification()
-    //   .then((remoteMessage) => {
-    //    if (remoteMessage) NotifySphere.sendCallback(remoteMessage, 'initial');
-    //   });
+    messaging()
+      .getInitialNotification()
+      .then((remoteMessage) => {
+        if (remoteMessage) {
+          NotifySphere.callbackOnpress(remoteMessage, 'initial');
+        }
+      });
 
     notifee.onForegroundEvent(({ type, detail }) => {
       if (type === EventType.PRESS) {
