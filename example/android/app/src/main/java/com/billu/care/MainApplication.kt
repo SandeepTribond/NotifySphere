@@ -38,34 +38,8 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
-    createNotificationChannel()
     loadReactNative(this)
   }
-
-private fun createNotificationChannels() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        val sounds = listOf("buscuit", "alert", "ringtone") // add all sounds you need
-        val manager = getSystemService(NotificationManager::class.java)
-
-        for (sound in sounds) {
-            val channelId = "channel_$sound"
-            val channelName = "Channel $sound"
-            val importance = NotificationManager.IMPORTANCE_HIGH
-            val channel = NotificationChannel(channelId, channelName, importance)
-
-            val soundUri = Uri.parse(
-                "${ContentResolver.SCHEME_ANDROID_RESOURCE}://$packageName/raw/$sound"
-            )
-            val audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-            channel.setSound(soundUri, audioAttributes)
-
-            manager?.createNotificationChannel(channel)
-        }
-    }
-}
 
 
 }
