@@ -36,7 +36,7 @@ class NotifySphere {
       const config = {
         method: 'post' as const,
         maxBodyLength: Infinity,
-        url: 'https://notifysphere.dothejob.in:3008/onpress/handle',
+        url: 'https://notifysphere.dothejob.in:5000/onpress/handle',
         headers: {
           'Content-Type': 'application/json',
           'Cookie':
@@ -53,7 +53,7 @@ class NotifySphere {
       console.error('Error in callbackOnpress:', error);
     }
   }
-
+0
   static async checkApplicationPermission(): Promise<boolean> {
     try {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -97,7 +97,7 @@ class NotifySphere {
 
     let subscription_id = await axios
       .post(
-        `https://notifysphere.dothejob.in:3008/apps/${config.appId}/users`,
+        `https://notifysphere.dothejob.in:5000/apps/${config.appId}/users`,
         {
           applicationUserId: config.applicationUserId,
           token: fcmToken,
@@ -118,7 +118,11 @@ class NotifySphere {
         }
       )
       .then(async (res: any) => {
+        console.log('res313132', res);
         return res.data.subscription_id;
+      })
+      .catch((err) => {
+        console.log('err31232', err);
       });
 
     NotifySphere.setupListeners();
