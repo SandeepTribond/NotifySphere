@@ -87,25 +87,6 @@
     "example"
   ],
   "packageManager": "yarn@3.6.1",
-  "codegenConfig": {
-    "name": "EcomPluginSpec",
-    "type": "modules",
-    "jsSrcsDir": "src",
-    "android": {
-      "javaPackageName": "com.ecomplugin"
-    }
-  },
-  "create-react-native-library": {
-    "languages": "kotlin-objc",
-    "type": "turbo-module",
-    "version": "0.53.0"
-  },
-  "dependencies": {
-    "@ptomasroos/react-native-multi-slider": "^2.2.2"
-  },
-  "engines": {
-    "node": ">=18"
-  },
   "jest": {
     "preset": "react-native",
     "modulePathIgnorePatterns": [
@@ -131,33 +112,12 @@
     },
     "plugins": {
       "@release-it/conventional-changelog": {
-        "preset": "angular"
+        "preset": {
+          "name": "angular"
+        }
       }
     }
   },
-  "eslintConfig": {
-    "root": true,
-    "extends": [
-      "@react-native-community",
-      "prettier"
-    ],
-    "rules": {
-      "prettier/prettier": [
-        "error",
-        {
-          "quoteProps": "consistent",
-          "singleQuote": true,
-          "tabWidth": 2,
-          "trailingComma": "es5",
-          "useTabs": false
-        }
-      ]
-    }
-  },
-  "eslintIgnore": [
-    "node_modules/",
-    "lib/"
-  ],
   "prettier": {
     "quoteProps": "consistent",
     "singleQuote": true,
@@ -169,8 +129,35 @@
     "source": "src",
     "output": "lib",
     "targets": [
-      "commonjs",
-      "module"
+      [
+        "module",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "typescript",
+        {
+          "project": "tsconfig.build.json"
+        }
+      ]
     ]
+  },
+  "codegenConfig": {
+    "name": "NotifySphereSpec",
+    "type": "modules",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.notifysphere"
+    }
+  },
+  "create-react-native-library": {
+    "languages": "kotlin-objc",
+    "type": "turbo-module",
+    "version": "0.54.2"
+  },
+  "dependencies": {
+    "@notifee/react-native": "^9.1.8",
+    "axios": "^1.12.2"
   }
 }

@@ -3357,16 +3357,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@ptomasroos/react-native-multi-slider@npm:^2.2.2":
-  version: 2.2.2
-  resolution: "@ptomasroos/react-native-multi-slider@npm:2.2.2"
-  peerDependencies:
-    react: "*"
-    react-native: "*"
-  checksum: f9e2263b4283cdd0011ad3c2e1ea6d70afe2c2f865a52c35e0f6c4fd948114762105a11f364e68da87de782490bfa1473540c6227e2e0033555e84827086464c
-  languageName: node
-  linkType: hard
-
 "@react-native-community/cli-clean@npm:20.0.0":
   version: 20.0.0
   resolution: "@react-native-community/cli-clean@npm:20.0.0"
@@ -4819,12 +4809,30 @@ __metadata:
   languageName: node
   linkType: hard
 
+"asynckit@npm:^0.4.0":
+  version: 0.4.0
+  resolution: "asynckit@npm:0.4.0"
+  checksum: 7b78c451df768adba04e2d02e63e2d0bf3b07adcd6e42b4cf665cb7ce899bedd344c69a1dcbce355b5f972d597b25aaa1c1742b52cffd9caccb22f348114f6be
+  languageName: node
+  linkType: hard
+
 "available-typed-arrays@npm:^1.0.7":
   version: 1.0.7
   resolution: "available-typed-arrays@npm:1.0.7"
   dependencies:
     possible-typed-array-names: ^1.0.0
   checksum: 1aa3ffbfe6578276996de660848b6e95669d9a95ad149e3dd0c0cda77db6ee1dbd9d1dd723b65b6d277b882dd0c4b91a654ae9d3cf9e1254b7e93e4908d78fd3
+  languageName: node
+  linkType: hard
+
+"axios@npm:^1.12.2":
+  version: 1.12.2
+  resolution: "axios@npm:1.12.2"
+  dependencies:
+    follow-redirects: ^1.15.6
+    form-data: ^4.0.4
+    proxy-from-env: ^1.1.0
+  checksum: f0331594fe053a4bbff04104edb073973a3aabfad2e56b0aa18de82428aa63f6f0839ca3d837258ec739cb4528014121793b1649a21e5115ffb2bf8237eadca3
   languageName: node
   linkType: hard
 
@@ -5486,6 +5494,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"combined-stream@npm:^1.0.8":
+  version: 1.0.8
+  resolution: "combined-stream@npm:1.0.8"
+  dependencies:
+    delayed-stream: ~1.0.0
+  checksum: 49fa4aeb4916567e33ea81d088f6584749fc90c7abec76fd516bf1c5aa5c79f3584b5ba3de6b86d26ddd64bae5329c4c7479343250cfe71c75bb366eae53bb7c
+  languageName: node
+  linkType: hard
+
 "command-exists@npm:^1.2.8":
   version: 1.2.9
   resolution: "command-exists@npm:1.2.9"
@@ -6125,6 +6142,13 @@ __metadata:
     p-map: ^7.0.2
     slash: ^5.1.0
   checksum: 502dea7a846f989e1d921733f5d41ae4ae9b3eff168d335bfc050c9ce938ddc46198180be133814269268c4b0aed441a82fbace948c0ec5eed4ed086a4ad3b0e
+  languageName: node
+  linkType: hard
+
+"delayed-stream@npm:~1.0.0":
+  version: 1.0.0
+  resolution: "delayed-stream@npm:1.0.0"
+  checksum: 46fe6e83e2cb1d85ba50bd52803c68be9bd953282fa7096f51fc29edd5d67ff84ff753c51966061e5ba7cb5e47ef6d36a91924eddb7f3f3483b1c560f77a0020
   languageName: node
   linkType: hard
 
@@ -7174,6 +7198,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"follow-redirects@npm:^1.15.6":
+  version: 1.15.11
+  resolution: "follow-redirects@npm:1.15.11"
+  peerDependenciesMeta:
+    debug:
+      optional: true
+  checksum: 20bf55e9504f59e6cc3743ba27edb2ebf41edea1baab34799408f2c050f73f0c612728db21c691276296d2795ea8a812dc532a98e8793619fcab91abe06d017f
+  languageName: node
+  linkType: hard
+
 "for-each@npm:^0.3.3, for-each@npm:^0.3.5":
   version: 0.3.5
   resolution: "for-each@npm:0.3.5"
@@ -7190,6 +7224,19 @@ __metadata:
     cross-spawn: ^7.0.6
     signal-exit: ^4.0.1
   checksum: b2c1a6fc0bf0233d645d9fefdfa999abf37db1b33e5dab172b3cbfb0662b88bfbd2c9e7ab853533d199050ec6b65c03fcf078fc212d26e4990220e98c6930eef
+  languageName: node
+  linkType: hard
+
+"form-data@npm:^4.0.4":
+  version: 4.0.4
+  resolution: "form-data@npm:4.0.4"
+  dependencies:
+    asynckit: ^0.4.0
+    combined-stream: ^1.0.8
+    es-set-tostringtag: ^2.1.0
+    hasown: ^2.0.2
+    mime-types: ^2.1.12
+  checksum: 9b7788836df9fa5a6999e0c02515b001946b2a868cfe53f026c69e2c537a2ff9fbfb8e9d2b678744628f3dc7a2d6e14e4e45dfaf68aa6239727f0bdb8ce0abf2
   languageName: node
   linkType: hard
 
@@ -9835,7 +9882,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mime-types@npm:^2.1.27, mime-types@npm:~2.1.24, mime-types@npm:~2.1.34":
+"mime-types@npm:^2.1.12, mime-types@npm:^2.1.27, mime-types@npm:~2.1.24, mime-types@npm:~2.1.34":
   version: 2.1.35
   resolution: "mime-types@npm:2.1.35"
   dependencies:
@@ -11080,7 +11127,7 @@ __metadata:
     "@eslint/eslintrc": ^3.3.1
     "@eslint/js": ^9.35.0
     "@evilmartians/lefthook": ^1.12.3
-    "@ptomasroos/react-native-multi-slider": ^2.2.2
+    "@notifee/react-native": ^9.1.8
     "@react-native-community/cli": 20.0.1
     "@react-native-firebase/app": ^22.2.1
     "@react-native-firebase/messaging": ^22.2.1
@@ -11089,6 +11136,7 @@ __metadata:
     "@release-it/conventional-changelog": ^10.0.1
     "@types/jest": ^29.5.14
     "@types/react": ^19.1.0
+    axios: ^1.12.2
     commitlint: ^19.8.1
     del-cli: ^6.0.0
     eslint: ^9.35.0
