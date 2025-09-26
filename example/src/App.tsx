@@ -21,7 +21,7 @@ export default function App() {
     });
 
     NotifySphere.onNotification((notification, type) => {
-      console.log('Notification received:', notification);
+      console.log('Notification received:', notification, type);
       console.log('Event type:', type);
       if (type === 'press' || type === 'opened' || type == 'initial') {
         console.log('helloKitty');

@@ -36,7 +36,7 @@ class NotifySphere {
       const config = {
         method: 'post' as const,
         maxBodyLength: Infinity,
-        url: 'https://notifysphere.dothejob.in:5000/onpress/handle',
+        url: 'https://notifysphere.dothejob.in:3008/onpress/handle',
         headers: {
           'Content-Type': 'application/json',
           'Cookie':
@@ -53,7 +53,7 @@ class NotifySphere {
       console.error('Error in callbackOnpress:', error);
     }
   }
-0
+  0;
   static async checkApplicationPermission(): Promise<boolean> {
     try {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -97,7 +97,7 @@ class NotifySphere {
 
     let subscription_id = await axios
       .post(
-        `https://notifysphere.dothejob.in:5000/apps/${config.appId}/users`,
+        `https://notifysphere.dothejob.in:3008/apps/${config.appId}/users`,
         {
           applicationUserId: config.applicationUserId,
           token: fcmToken,
@@ -138,10 +138,10 @@ class NotifySphere {
       await NotifySphere.displayLocalNotification(remoteMessage);
     });
 
-    // messaging().onNotificationOpenedApp(async (remoteMessage: any) => {
-    //   console.log('data34234', remoteMessage);
-    //   NotifySphere.callbackOnpress(remoteMessage, 'opened');
-    // });
+    messaging().onNotificationOpenedApp(async (remoteMessage: any) => {
+      console.log('data34234', remoteMessage);
+      NotifySphere.callbackOnpress(remoteMessage, 'opened');
+    });
 
     messaging()
       .getInitialNotification()
@@ -153,12 +153,17 @@ class NotifySphere {
 
     notifee.onForegroundEvent(({ type, detail }) => {
       if (type === EventType.PRESS) {
+        console.log('detail323213', detail);
         NotifySphere.callbackOnpress(detail.notification, 'opened');
       }
     });
 
     notifee.onBackgroundEvent(async ({ type, detail }) => {
+      console.log('detail323213111111', type, detail);
+
       if (type === EventType.PRESS) {
+        console.log('detail323213', detail);
+
         NotifySphere.callbackOnpress(detail.notification, 'press');
       }
     });
