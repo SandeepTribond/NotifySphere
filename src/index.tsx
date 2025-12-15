@@ -2,7 +2,7 @@ import messaging from '@react-native-firebase/messaging';
 import notifee, {
   AndroidImportance,
   AndroidStyle,
-  EventType, // Import EventType if available
+  EventType,
 } from '@notifee/react-native';
 import axios from 'axios';
 import { PermissionsAndroid, Platform } from 'react-native';
@@ -22,14 +22,14 @@ type NotificationCallback = (
 
 class NotifySphere {
   private static callback: NotificationCallback | null = null;
+  private static fcmToken: string | null = null;
 
-  // ✅ Permission check remains fully here
-
+  // ========= Press callback (tracking) =========
   static async callbackOnpress(remoteMessage: any, status: string) {
     console.log('remoteMessage413123', remoteMessage);
     try {
       const data = JSON.stringify({
-        notifiction_id: remoteMessage?.data?.notification_id, // 🔑 keep same spelling as backend expects
+        notifiction_id: remoteMessage?.data?.notification_id,
         onPressStatus: 1,
       });
 
@@ -46,14 +46,15 @@ class NotifySphere {
       };
 
       const response = await axios.request(config);
-      console.log('onPress API response:', response);
+      console.log('onPress API response:', response.data);
 
       NotifySphere.sendCallback(remoteMessage, status);
     } catch (error) {
       console.error('Error in callbackOnpress:', error);
     }
   }
-  0;
+
+  // ========= Permissions =========
   static async checkApplicationPermission(): Promise<boolean> {
     try {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -75,6 +76,7 @@ class NotifySphere {
     }
   }
 
+  // ========= Initialize + register user (with tags) =========
   static async initialize(config: {
     applicationUserId: number;
     type: string;
@@ -86,11 +88,13 @@ class NotifySphere {
     email?: string;
     appId?: string;
     phone?: number;
+    tags?: Record<string, any>;
   }) {
     const hasPermission = await NotifySphere.checkApplicationPermission();
     if (!hasPermission) return;
 
     const fcmToken = await messaging().getToken();
+    NotifySphere.fcmToken = fcmToken;
     console.log('fcmToken31232', fcmToken, config);
 
     if (!config.appId) return;
@@ -110,6 +114,7 @@ class NotifySphere {
             state: config.state,
             email: config.email,
             phone: config.phone,
+            tags: config.tags,
           },
         },
         {
@@ -117,8 +122,8 @@ class NotifySphere {
           maxBodyLength: Infinity,
         }
       )
-      .then(async (res: any) => {
-        console.log('res313132', res);
+      .then((res: any) => {
+        console.log('res313132', res.data);
         return res.data.subscription_id;
       })
       .catch((err) => {
@@ -129,10 +134,49 @@ class NotifySphere {
     return subscription_id;
   }
 
+  // ========= Update tags only (later) =========
+  static async updateTags(params: {
+    appId: string;
+    applicationUserId: number;
+    type: string;
+    tags: Record<string, any>;
+  }) {
+    try {
+      if (!NotifySphere.fcmToken) {
+        console.warn('NotifySphere: FCM token missing, cannot update tags');
+        return null;
+      }
+
+      const res = await axios.post(
+        `https://notifysphere.dothejob.in:3008/apps/${params.appId}/users`,
+        {
+          applicationUserId: params.applicationUserId,
+          token: NotifySphere.fcmToken,
+          type: params.type,
+          user: {
+            tags: params.tags, // ✅ only tags
+          },
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          maxBodyLength: Infinity,
+        }
+      );
+
+      console.log('tags update response:', res.data);
+      return res.data;
+    } catch (error) {
+      console.error('Error updating tags:', error);
+      return null;
+    }
+  }
+
+  // ========= Public callback setter =========
   static onNotification(callback: NotificationCallback) {
     NotifySphere.callback = callback;
   }
 
+  // ========= Listeners =========
   private static setupListeners() {
     messaging().onMessage(async (remoteMessage) => {
       await NotifySphere.displayLocalNotification(remoteMessage);
@@ -163,12 +207,12 @@ class NotifySphere {
 
       if (type === EventType.PRESS) {
         console.log('detail323213', detail);
-
         NotifySphere.callbackOnpress(detail.notification, 'press');
       }
     });
   }
 
+  // ========= Local notification display =========
   private static async displayLocalNotification(remoteMessage: any) {
     const soundRaw = remoteMessage.data?.sound || 'default';
     const androidChannelId = `channel_${soundRaw}`;
@@ -187,6 +231,7 @@ class NotifySphere {
       remoteMessage.notification?.android?.imageUrl ||
       remoteMessage.notification?.imageUrl ||
       remoteMessage.notification?.ios?.attachments?.[0]?.url;
+
     await notifee.displayNotification({
       title: remoteMessage.notification?.title,
       body: remoteMessage.notification?.body,
@@ -203,8 +248,8 @@ class NotifySphere {
           : undefined,
       },
       ios: {
-        sound: soundRaw, // must be a bundled sound file or "default"
-        attachments: image ? [{ url: image }] : undefined, // ✅ this is correct
+        sound: soundRaw,
+        attachments: image ? [{ url: image }] : undefined,
         foregroundPresentationOptions: {
           alert: true,
           badge: true,
@@ -215,6 +260,7 @@ class NotifySphere {
     });
   }
 
+  // ========= App-level callback trigger =========
   private static sendCallback(remoteMessage: any, type?: string) {
     if (!NotifySphere.callback) return;
 
