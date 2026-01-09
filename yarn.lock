@@ -11082,6 +11082,32 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-native-device-info@npm:^15.0.1":
+  version: 15.0.1
+  resolution: "react-native-device-info@npm:15.0.1"
+  peerDependencies:
+    react-native: "*"
+  checksum: e7c20006db07758fcf820e891b979b9d7e87c10b6a38066402d60d85ff1dc8e1ac47e8b57209bf394f20516fb49600cde6688cd6f7cfe7210f285555960a74e4
+  languageName: node
+  linkType: hard
+
+"react-native-localize@npm:^3.6.1":
+  version: 3.6.1
+  resolution: "react-native-localize@npm:3.6.1"
+  peerDependencies:
+    "@expo/config-plugins": "*"
+    react: "*"
+    react-native: "*"
+    react-native-macos: "*"
+  peerDependenciesMeta:
+    "@expo/config-plugins":
+      optional: true
+    react-native-macos:
+      optional: true
+  checksum: dd1cfe97b5699ce2e7ac60c863ffa7f686f1d7820c0dcbfe293468b8d481a776c274d97a3fcbb44b1fca2a804ef0ce966aac905d560e235576b4e492192b1fc2
+  languageName: node
+  linkType: hard
+
 "react-native-monorepo-config@npm:^0.1.8, react-native-monorepo-config@npm:^0.1.9":
   version: 0.1.10
   resolution: "react-native-monorepo-config@npm:0.1.10"
@@ -11113,6 +11139,8 @@ __metadata:
     react: 19.1.0
     react-native: 0.81.1
     react-native-builder-bob: ^0.40.13
+    react-native-device-info: ^15.0.1
+    react-native-localize: ^3.6.1
     react-native-monorepo-config: ^0.1.9
     react-native-safe-area-context: ^5.5.2
   languageName: unknown
@@ -11147,6 +11175,8 @@ __metadata:
     react: 19.1.0
     react-native: 0.81.1
     react-native-builder-bob: ^0.40.13
+    react-native-device-info: ^15.0.1
+    react-native-localize: ^3.6.1
     release-it: ^19.0.4
     turbo: ^2.5.6
     typescript: ^5.9.2
@@ -11155,6 +11185,8 @@ __metadata:
     "@react-native-firebase/messaging": ^22.2.1
     react: "*"
     react-native: "*"
+    react-native-device-info: ^15.0.1
+    react-native-localize: ^3.6.0
   languageName: unknown
   linkType: soft
 
@@ -12607,7 +12639,7 @@ __metadata:
 
 "typescript@patch:typescript@^5.9.2#~builtin<compat/typescript>":
   version: 5.9.2
-  resolution: "typescript@patch:typescript@npm%3A5.9.2#~builtin<compat/typescript>::version=5.9.2&hash=14eedb"
+  resolution: "typescript@patch:typescript@npm%3A5.9.2#~builtin<compat/typescript>::version=5.9.2&hash=29ae49"
   bin:
     tsc: bin/tsc
     tsserver: bin/tsserver

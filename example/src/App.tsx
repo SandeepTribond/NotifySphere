@@ -16,6 +16,7 @@ export default function App() {
       email: 'madhav@example.com',
       appId: '253b13cc-7dcb-2dcc-8dde-565433ec8d15',
       phone: 9983101939,
+      tags: { gender: 'male', plan: 'gold' }
     }).then((res: any) => {
       console.log('res312323', res);
     });

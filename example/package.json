@@ -16,6 +16,8 @@
     "@react-native/new-app-screen": "0.81.1",
     "react": "19.1.0",
     "react-native": "0.81.1",
+    "react-native-device-info": "^15.0.1",
+    "react-native-localize": "^3.6.1",
     "react-native-safe-area-context": "^5.5.2"
   },
   "devDependencies": {

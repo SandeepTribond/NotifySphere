@@ -6,13 +6,18 @@ import notifee, {
 } from '@notifee/react-native';
 import axios from 'axios';
 import { PermissionsAndroid, Platform } from 'react-native';
-
+import DeviceInfo from "react-native-device-info";
+import * as RNLocalize from "react-native-localize";
 type NotificationData = {
   title?: string;
   body?: string;
   data?: any;
   image?: string;
   sound?: string;
+};
+
+type Tags = {
+  [key: string]: string;
 };
 
 type NotificationCallback = (
@@ -53,7 +58,7 @@ class NotifySphere {
       console.error('Error in callbackOnpress:', error);
     }
   }
-  0;
+  
   static async checkApplicationPermission(): Promise<boolean> {
     try {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -75,6 +80,19 @@ class NotifySphere {
     }
   }
 
+
+  static async getDeviceInfo() {
+      return {
+        sdk: DeviceInfo.getApiLevel()?.toString(), // e.g. "34"
+        device_model: DeviceInfo.getModel(), // e.g. "iPhone 14" or "TECNO CK6"
+        device_os: DeviceInfo.getSystemName(), // e.g. "Android" or "iOS"
+        device_version: DeviceInfo.getSystemVersion(), // e.g. "15"
+        carrier: await DeviceInfo.getCarrier(), // e.g. "airtel"
+        app_version: DeviceInfo.getVersion(), // e.g. "1.0.2"
+        timezone_id: RNLocalize.getTimeZone(), // e.g. "Asia/Kolkata"
+      };
+  }
+
   static async initialize(config: {
     applicationUserId: number;
     type: string;
@@ -86,8 +104,10 @@ class NotifySphere {
     email?: string;
     appId?: string;
     phone?: number;
+    tags?:Tags
   }) {
     const hasPermission = await NotifySphere.checkApplicationPermission();
+    const devInfo = await NotifySphere.getDeviceInfo();
     if (!hasPermission) return;
 
     const fcmToken = await messaging().getToken();
@@ -110,6 +130,14 @@ class NotifySphere {
             state: config.state,
             email: config.email,
             phone: config.phone,
+            tags: config.tags,
+            sdk: devInfo.sdk,
+            device_model: devInfo.device_model,
+            device_os: devInfo.device_os,
+            device_version: devInfo.device_version,
+            carrier: devInfo.carrier,
+            app_version: devInfo.app_version,
+            timezone_id: devInfo.timezone_id
           },
         },
         {
