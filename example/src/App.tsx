@@ -14,14 +14,14 @@ export default function App() {
         city: 'Jaipur',
         state: 'Rajasthan',
         email: 'madhav@example.com',
-        appId: '253b13cc-7dcb-2dcc-8dde-565433ec8d15',
+        appId: 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba',
         phone: 9983101939,
       });
 
       console.log('NotifySphere subscriptionId:', subscriptionId);
 
       NotifySphere.updateTags({
-        appId: '253b13cc-7dcb-2dcc-8dde-565433ec8d15',
+        appId: 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba',
         applicationUserId: 1,
         type: Platform.OS === 'android' ? 'AndroidPush' : 'IOSPush',
         tags: {

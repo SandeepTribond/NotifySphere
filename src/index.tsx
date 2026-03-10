@@ -15,10 +15,16 @@ type NotificationData = {
   sound?: string;
 };
 
+type Tags = {
+  [key: string]: string;
+};
+
 type NotificationCallback = (
   notification: NotificationData,
   type?: string
 ) => void;
+
+
 
 class NotifySphere {
   private static callback: NotificationCallback | null = null;
@@ -26,7 +32,6 @@ class NotifySphere {
 
   // ========= Press callback (tracking) =========
   static async callbackOnpress(remoteMessage: any, status: string) {
-    console.log('remoteMessage413123', remoteMessage);
     try {
       const data = JSON.stringify({
         notifiction_id: remoteMessage?.data?.notification_id,
@@ -101,7 +106,7 @@ class NotifySphere {
 
     let subscription_id = await axios
       .post(
-        `https://notifysphere.dothejob.in:3008/apps/${config.appId}/users`,
+        `https://apinotify.dothejob.in/apps/${config.appId}/users`,
         {
           applicationUserId: config.applicationUserId,
           token: fcmToken,
@@ -130,6 +135,12 @@ class NotifySphere {
         console.log('err31232', err);
       });
 
+    await notifee.createChannel({
+      id: 'channel_default',
+      name: 'Default Channel',
+      importance: AndroidImportance.HIGH,
+    });
+
     NotifySphere.setupListeners();
     return subscription_id;
   }
@@ -148,7 +159,7 @@ class NotifySphere {
       }
 
       const res = await axios.post(
-        `https://notifysphere.dothejob.in:3008/apps/${params.appId}/users`,
+        `https://apinotify.dothejob.in/apps/${params.appId}/users`,
         {
           applicationUserId: params.applicationUserId,
           token: NotifySphere.fcmToken,
@@ -176,6 +187,22 @@ class NotifySphere {
     NotifySphere.callback = callback;
   }
 
+  // ========= Background handler (must be called in index.js before AppRegistry) =========
+  static setBackgroundHandler() {
+    messaging().setBackgroundMessageHandler(async (remoteMessage) => {
+      await NotifySphere.displayLocalNotification(remoteMessage);
+    });
+
+    notifee.onBackgroundEvent(async ({ type, detail }) => {
+      console.log('detail323213111111', type, detail);
+
+      if (type === EventType.PRESS) {
+        console.log('detail323213', detail);
+        NotifySphere.callbackOnpress(detail.notification, 'press');
+      }
+    });
+  }
+
   // ========= Listeners =========
   private static setupListeners() {
     messaging().onMessage(async (remoteMessage) => {
@@ -199,15 +226,6 @@ class NotifySphere {
       if (type === EventType.PRESS) {
         console.log('detail323213', detail);
         NotifySphere.callbackOnpress(detail.notification, 'opened');
-      }
-    });
-
-    notifee.onBackgroundEvent(async ({ type, detail }) => {
-      console.log('detail323213111111', type, detail);
-
-      if (type === EventType.PRESS) {
-        console.log('detail323213', detail);
-        NotifySphere.callbackOnpress(detail.notification, 'press');
       }
     });
   }
