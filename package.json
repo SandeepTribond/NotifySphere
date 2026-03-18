@@ -1,9 +1,8 @@
 {
   "name": "react-native-notify-sphere",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Notify sphere npm package",
   "main": "./lib/module/index",
-  "private": false,
   "types": "lib/typescript/src/index.d.ts",
   "react-native": "src/index",
   "source": "src/index",
@@ -59,6 +58,8 @@
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.35.0",
     "@evilmartians/lefthook": "^1.12.3",
+    "@notifee/react-native": "^9.1.8",
+    "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native-community/cli": "20.0.1",
     "@react-native-firebase/app": "^22.2.1",
     "@react-native-firebase/messaging": "^22.2.1",
@@ -77,19 +78,20 @@
     "react": "19.1.0",
     "react-native": "0.81.1",
     "react-native-builder-bob": "^0.40.13",
-    "react-native-device-info": "^15.0.1",
-    "react-native-localize": "^3.6.1",
     "release-it": "^19.0.4",
     "turbo": "^2.5.6",
     "typescript": "^5.9.2"
   },
+  "dependencies": {
+    "axios": "^1.12.2"
+  },
   "peerDependencies": {
+    "@notifee/react-native": "^9.1.8",
+    "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native-firebase/app": "^22.2.1",
     "@react-native-firebase/messaging": "^22.2.1",
     "react": "*",
-    "react-native": "*",
-    "react-native-device-info": "^15.0.1",
-    "react-native-localize": "^3.6.0"
+    "react-native": "*"
   },
   "workspaces": [
     "example"
@@ -163,9 +165,5 @@
     "languages": "kotlin-objc",
     "type": "turbo-module",
     "version": "0.54.2"
-  },
-  "dependencies": {
-    "@notifee/react-native": "^9.1.8",
-    "axios": "^1.12.2"
   }
 }

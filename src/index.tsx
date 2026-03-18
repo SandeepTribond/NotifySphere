@@ -3,63 +3,222 @@ import notifee, {
   AndroidImportance,
   AndroidStyle,
   EventType,
+  type AndroidChannel,
 } from '@notifee/react-native';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PermissionsAndroid, Platform } from 'react-native';
 
-type NotificationData = {
+const STORAGE_KEY_TOKEN = '@notifysphere_fcm_token';
+const STORAGE_KEY_SUB_ID = '@notifysphere_subscription_id';
+const STORAGE_KEY_USER_HASH = '@notifysphere_user_hash';
+
+// ─── Type definitions ──────────────────────────────────────────────────────────
+
+/** Shape of a Firebase Cloud Messaging remote message */
+export interface FirebaseRemoteMessage {
+  messageId?: string;
+  notification?: {
+    title?: string;
+    body?: string;
+    android?: { imageUrl?: string };
+    ios?: { attachments?: Array<{ url?: string }> };
+    imageUrl?: string;
+  };
+  data?: Record<string, string>;
+}
+
+/** Shape of a Notifee notification object (returned from press events) */
+export interface NotifeeNotification {
+  id?: string;
   title?: string;
   body?: string;
-  data?: any;
+  data?: Record<string, string>;
+  android?: { largeIcon?: string };
+  ios?: { attachments?: Array<{ url?: string }> };
+}
+
+/** Normalised notification data delivered to the consumer callback */
+export type NotificationData = {
+  title?: string;
+  body?: string;
+  data?: Record<string, string>;
   image?: string;
   sound?: string;
 };
 
-type Tags = {
-  [key: string]: string;
-};
-
-type NotificationCallback = (
+export type NotificationCallback = (
   notification: NotificationData,
   type?: string
 ) => void;
 
+export type InitializeConfig = {
+  /** Your application's user ID for this device */
+  applicationUserId: number;
+  /** Push type, e.g. 'AndroidPush' or 'IOSPush' */
+  type: string;
+  /** NotifySphere app ID (required) */
+  appId: string;
+  name?: string;
+  lat?: string;
+  long?: string;
+  city?: string;
+  state?: string;
+  email?: string;
+  /** Phone number as a string to preserve leading zeros and country codes */
+  phone?: string;
+  tags?: Record<string, string>;
+  /**
+   * Base URL of your NotifySphere API server.
+   * Defaults to the hosted service.
+   */
+  baseUrl?: string;
+  /**
+   * Full URL of your onpress-tracking endpoint.
+   * Defaults to the hosted service.
+   */
+  trackingUrl?: string;
+  /**
+   * Full URL of your delivery-confirmation endpoint.
+   * Called as soon as a notification is received (foreground, background, or
+   * terminated — see note below).
+   * Defaults to the hosted service.
+   *
+   * NOTE: delivery confirmation when the app is terminated only works for
+   * **data-only** FCM messages (no `notification` field in the payload).
+   * If the payload contains a `notification` field, the OS delivers it
+   * silently without waking the app, so this callback cannot fire.
+   */
+  deliveryUrl?: string;
+  /**
+   * Optional API key sent as a Bearer token to the tracking endpoints.
+   * Never hard-code this — read it from a secure config or environment.
+   */
+  apiKey?: string;
+  /** Enable verbose logging. Defaults to false. */
+  debug?: boolean;
+};
 
+// ─── Internal logger ──────────────────────────────────────────────────────────
+
+let _debug = false;
+
+const log = (...args: unknown[]) => {
+  if (_debug) console.log('[NotifySphere]', ...args);
+};
+const warn = (...args: unknown[]) => {
+  if (_debug) console.warn('[NotifySphere]', ...args);
+};
+// Errors are always surfaced regardless of the debug flag
+const logError = (...args: unknown[]) =>
+  console.error('[NotifySphere]', ...args);
+
+// ─── Default endpoints ────────────────────────────────────────────────────────
+
+const DEFAULT_BASE_URL = 'https://api.notifysphere.in';
+// const DEFAULT_BASE_URL = 'https://apinotify.dothejob.in';
+const DEFAULT_TRACKING_URL =
+   DEFAULT_BASE_URL+'/onpress/handle';
+const DEFAULT_DELIVERY_URL =
+    DEFAULT_BASE_URL+'/delivery/confirm';;
+
+// ─── NotifySphere class ───────────────────────────────────────────────────────
 
 class NotifySphere {
   private static callback: NotificationCallback | null = null;
   private static fcmToken: string | null = null;
+  private static appId: string | null = null;
+  private static subscriptionId: string | null = null;
+  private static baseUrl: string = DEFAULT_BASE_URL;
+  private static trackingUrl: string = DEFAULT_TRACKING_URL;
+  private static deliveryUrl: string = DEFAULT_DELIVERY_URL;
+  private static apiKey: string | null = null;
+  private static unsubscribers: Array<() => void> = [];
+  private static initialized = false;
+  private static createdChannels = new Set<string>();
 
-  // ========= Press callback (tracking) =========
-  static async callbackOnpress(remoteMessage: any, status: string) {
+  // ─── Press tracking ──────────────────────────────────────────────────────
+
+  /**
+   * Tracks a notification press event and fires the consumer callback.
+   * Accepts both Firebase remote messages and Notifee notification objects.
+   */
+  static async callbackOnpress(
+    notification: FirebaseRemoteMessage | NotifeeNotification,
+    status: string
+  ): Promise<void> {
     try {
-      const data = JSON.stringify({
-        notifiction_id: remoteMessage?.data?.notification_id,
-        onPressStatus: 1,
-      });
+      const notificationId =
+        (notification as FirebaseRemoteMessage).data?.notification_id ??
+        (notification as NotifeeNotification).data?.notification_id;
 
-      const config = {
-        method: 'post' as const,
-        maxBodyLength: Infinity,
-        url: 'https://notifysphere.dothejob.in:3008/onpress/handle',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cookie':
-            'token=sYPT8POivlxfFSR54MWd3reaArvODMiIcM4KM39cqkXBLVu%2B8b1zV2csabU9byzo',
-        },
-        data,
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
       };
+      if (NotifySphere.apiKey) {
+        headers['Authorization'] = `Bearer ${NotifySphere.apiKey}`;
+      }
 
-      const response = await axios.request(config);
-      console.log('onPress API response:', response.data);
+      const response = await axios.post(
+        NotifySphere.trackingUrl,
+        {
+          notification_id: notificationId,
+          subscription_id: NotifySphere.subscriptionId,
+          onPressStatus: 1,
+        },
+        { headers, maxBodyLength: 1024 * 50, timeout: 10000 }
+      );
 
-      NotifySphere.sendCallback(remoteMessage, status);
-    } catch (error) {
-      console.error('Error in callbackOnpress:', error);
+      log('onPress tracking response:', response.data);
+      NotifySphere.sendCallback(notification, status);
+    } catch (err) {
+      logError('Error in callbackOnpress:', err);
     }
   }
 
-  // ========= Permissions =========
+  // ─── Delivery confirmation ───────────────────────────────────────────────
+
+  /**
+   * Sends a delivery receipt to the server as soon as a notification arrives.
+   *
+   * This fires in three scenarios:
+   *  - Foreground  : app is open when the message arrives
+   *  - Background  : app is alive in the background (data-only FCM message)
+   *  - Terminated  : app is completely killed (data-only FCM message only —
+   *                  notification messages are shown by the OS without waking
+   *                  the app, so this cannot fire in that case)
+   */
+  private static async callbackOnDelivery(
+    remoteMessage: FirebaseRemoteMessage
+  ): Promise<void> {
+    try {
+      const notificationId = remoteMessage.data?.notification_id;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (NotifySphere.apiKey) {
+        headers['Authorization'] = `Bearer ${NotifySphere.apiKey}`;
+      }
+      log('Sending delivery confirmation to:', NotifySphere.deliveryUrl);
+      const response = await axios.post(
+        NotifySphere.deliveryUrl,
+        {
+          notification_id: notificationId,
+          subscription_id: NotifySphere.subscriptionId,
+          onDeliveredStatus: 1,
+        },
+        { headers, maxBodyLength: 1024 * 50, timeout: 10000 }
+      );
+
+      log('Delivery confirmation response:', response.data);
+    } catch (err) {
+      logError('Error sending delivery confirmation:', err);
+    }
+  }
+
+  // ─── Permissions ─────────────────────────────────────────────────────────
+
   static async checkApplicationPermission(): Promise<boolean> {
     try {
       if (Platform.OS === 'android' && Platform.Version >= 33) {
@@ -75,194 +234,483 @@ class NotifySphere {
         );
       }
       return true;
-    } catch (error) {
-      console.error('Error requesting notification permission:', error);
+    } catch (err) {
+      logError('Error requesting notification permission:', err);
       return false;
     }
   }
 
-  // ========= Initialize + register user (with tags) =========
-  static async initialize(config: {
-    applicationUserId: number;
-    type: string;
-    name?: string;
-    lat?: string;
-    long?: string;
-    city?: string;
-    state?: string;
-    email?: string;
-    appId?: string;
-    phone?: number;
-    tags?: Record<string, any>;
-  }) {
-    const hasPermission = await NotifySphere.checkApplicationPermission();
-    if (!hasPermission) return;
+  // ─── User details fingerprint ─────────────────────────────────────────────
 
-    const fcmToken = await messaging().getToken();
-    NotifySphere.fcmToken = fcmToken;
-    console.log('fcmToken31232', fcmToken, config);
-
-    if (!config.appId) return;
-
-    let subscription_id = await axios
-      .post(
-        `https://apinotify.dothejob.in/apps/${config.appId}/users`,
-        {
-          applicationUserId: config.applicationUserId,
-          token: fcmToken,
-          type: config.type,
-          user: {
-            userName: config.name,
-            lat: config.lat,
-            long: config.long,
-            city: config.city,
-            state: config.state,
-            email: config.email,
-            phone: config.phone,
-            tags: config.tags,
-          },
-        },
-        {
-          headers: { 'Content-Type': 'application/json' },
-          maxBodyLength: Infinity,
-        }
-      )
-      .then((res: any) => {
-        console.log('res313132', res.data);
-        return res.data.subscription_id;
-      })
-      .catch((err) => {
-        console.log('err31232', err);
-      });
-
-    await notifee.createChannel({
-      id: 'channel_default',
-      name: 'Default Channel',
-      importance: AndroidImportance.HIGH,
-    });
-
-    NotifySphere.setupListeners();
-    return subscription_id;
+  /**
+   * Builds a stable string fingerprint of all user-profile fields.
+   * Used to detect whether any detail has changed since the last registration,
+   * so the API is only called when something actually differs.
+   */
+  private static buildUserHash(config: InitializeConfig): string {
+    const fields = {
+      applicationUserId: config.applicationUserId,
+      type: config.type,
+      name: config.name ?? '',
+      lat: config.lat ?? '',
+      long: config.long ?? '',
+      city: config.city ?? '',
+      state: config.state ?? '',
+      email: config.email ?? '',
+      phone: config.phone ?? '',
+      // Stringify tags with sorted keys so order doesn't affect the hash
+      tags: config.tags
+        ? JSON.stringify(
+            Object.keys(config.tags)
+              .sort()
+              .reduce<Record<string, string>>((acc, k) => {
+                acc[k] = config.tags![k]!;
+                return acc;
+              }, {})
+          )
+        : '',
+    };
+    return JSON.stringify(fields);
   }
 
-  // ========= Update tags only (later) =========
-  static async updateTags(params: {
-    appId: string;
-    applicationUserId: number;
-    type: string;
-    tags: Record<string, any>;
-  }) {
+  // ─── Initialize ──────────────────────────────────────────────────────────
+
+  /**
+   * Initialises the SDK and sets up notification listeners.
+   *
+   * Safe to call every time the app opens — it only hits the registration API
+   * when the FCM token OR any user detail (email, phone, location, tags, etc.)
+   * has changed since the last successful registration.
+   * Listeners are registered only once per process lifetime.
+   *
+   * Token changes are also handled automatically via `onTokenRefresh`.
+   */
+  static async initialize(
+    config: InitializeConfig
+  ): Promise<string | undefined> {
+    _debug = config.debug ?? false;
+    NotifySphere.appId = config.appId;
+    NotifySphere.baseUrl = NotifySphere.enforceHttps(config.baseUrl ?? DEFAULT_BASE_URL);
+    NotifySphere.trackingUrl = NotifySphere.enforceHttps(config.trackingUrl ?? DEFAULT_TRACKING_URL);
+    NotifySphere.deliveryUrl = NotifySphere.enforceHttps(config.deliveryUrl ?? DEFAULT_DELIVERY_URL);
+    NotifySphere.apiKey = config.apiKey ?? null;
+
+    const hasPermission = await NotifySphere.checkApplicationPermission();
+    if (!hasPermission) {
+      warn('Notification permission not granted — aborting initialization');
+      return undefined;
+    }
+
     try {
-      if (!NotifySphere.fcmToken) {
-        console.warn('NotifySphere: FCM token missing, cannot update tags');
-        return null;
+      const fcmToken = await messaging().getToken();
+      NotifySphere.fcmToken = fcmToken;
+
+      // ── Restore cached subscription_id immediately so tracking calls
+      //    have it available even before the registration API responds.
+      const cachedSubId = await AsyncStorage.getItem(STORAGE_KEY_SUB_ID);
+      if (cachedSubId) {
+        NotifySphere.subscriptionId = cachedSubId;
       }
 
+      // ── Only call the registration API when the FCM token OR any user
+      //    detail has changed. This avoids a redundant network call on every
+      //    app open while still syncing updates (email, phone, location, etc.)
+      const [cachedToken, cachedUserHash] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEY_TOKEN),
+        AsyncStorage.getItem(STORAGE_KEY_USER_HASH),
+      ]);
+
+      const currentUserHash = NotifySphere.buildUserHash(config);
+      let subscriptionId: string | undefined = cachedSubId ?? undefined;
+
+      const tokenChanged = fcmToken !== cachedToken;
+      const userChanged = currentUserHash !== cachedUserHash;
+
+      if (tokenChanged || userChanged) {
+        if (tokenChanged) log('FCM token changed — re-registering device');
+        if (userChanged) log('User details changed — re-registering device');
+        subscriptionId = await NotifySphere.registerDevice(
+          config,
+          fcmToken,
+          currentUserHash
+        );
+      } else {
+        log('Token and user details unchanged — skipping registration API call');
+      }
+
+      // ── Channel and listeners are always set up (idempotent)
+      await NotifySphere.ensureChannel(
+        'channel_default',
+        'Default Channel',
+        'default'
+      );
+
+      if (!NotifySphere.initialized) {
+        NotifySphere.setupListeners();
+        // Watch for token refreshes (Firebase can rotate the token silently)
+        NotifySphere.watchTokenRefresh(config);
+        NotifySphere.initialized = true;
+      }
+
+      return subscriptionId;
+    } catch (err) {
+      logError('Error during initialization:', err);
+      return undefined;
+    }
+  }
+
+  /**
+   * Calls the registration API and persists the token, subscription_id, and
+   * user hash so future launches can detect what has changed.
+   * Extracted so it can also be called from the token-refresh watcher.
+   */
+  private static async registerDevice(
+    config: InitializeConfig,
+    fcmToken: string,
+    userHash?: string
+  ): Promise<string | undefined> {
+    const res = await axios.post(
+      `${NotifySphere.baseUrl}/apps/${config.appId}/users`,
+      {
+        applicationUserId: config.applicationUserId,
+        token: fcmToken,
+        type: config.type,
+        user: {
+          userName: config.name,
+          lat: config.lat,
+          long: config.long,
+          city: config.city,
+          state: config.state,
+          email: config.email,
+          phone: config.phone,
+          tags: config.tags,
+        },
+      },
+      {
+        headers: { 'Content-Type': 'application/json' },
+        maxBodyLength: 1024 * 50,
+        timeout: 10000,
+      }
+    );
+
+    log('Device registration response:', res.data);
+    const subscriptionId: string | undefined = res.data?.subscription_id;
+    NotifySphere.subscriptionId = subscriptionId ?? null;
+
+    // Persist token, subscription_id, and user hash for future launch comparisons
+    const hash = userHash ?? NotifySphere.buildUserHash(config);
+    await Promise.all([
+      AsyncStorage.setItem(STORAGE_KEY_TOKEN, fcmToken),
+      AsyncStorage.setItem(STORAGE_KEY_USER_HASH, hash),
+      subscriptionId
+        ? AsyncStorage.setItem(STORAGE_KEY_SUB_ID, subscriptionId)
+        : Promise.resolve(),
+    ]);
+
+    return subscriptionId;
+  }
+
+  /**
+   * Listens for Firebase token refreshes and automatically re-registers
+   * the device when the token rotates, without requiring the consumer to
+   * call initialize() again.
+   */
+  private static watchTokenRefresh(config: InitializeConfig): void {
+    const unsubRefresh = messaging().onTokenRefresh(async (newToken) => {
+      log('FCM token refreshed — re-registering device');
+      NotifySphere.fcmToken = newToken;
+      try {
+        // User details haven't changed here, reuse the existing hash
+        const existingHash =
+          (await AsyncStorage.getItem(STORAGE_KEY_USER_HASH)) ??
+          NotifySphere.buildUserHash(config);
+        await NotifySphere.registerDevice(config, newToken, existingHash);
+      } catch (err) {
+        logError('Error re-registering after token refresh:', err);
+      }
+    });
+    NotifySphere.unsubscribers.push(unsubRefresh);
+  }
+
+  // ─── Update tags ─────────────────────────────────────────────────────────
+
+  /**
+   * Updates user tags without re-registering the device.
+   * `appId` is optional here — it falls back to the value passed in `initialize`.
+   */
+  static async updateTags(params: {
+    applicationUserId: number;
+    type: string;
+    tags: Record<string, string>;
+    /** Falls back to the appId provided in initialize() */
+    appId?: string;
+  }): Promise<unknown> {
+    const appId = params.appId ?? NotifySphere.appId;
+
+    if (!NotifySphere.fcmToken) {
+      warn('FCM token missing — cannot update tags');
+      return null;
+    }
+    if (!appId) {
+      warn('appId missing — cannot update tags');
+      return null;
+    }
+
+    try {
       const res = await axios.post(
-        `https://apinotify.dothejob.in/apps/${params.appId}/users`,
+        `${NotifySphere.baseUrl}/apps/${appId}/users`,
         {
           applicationUserId: params.applicationUserId,
           token: NotifySphere.fcmToken,
           type: params.type,
-          user: {
-            tags: params.tags, // ✅ only tags
-          },
+          user: { tags: params.tags },
         },
         {
           headers: { 'Content-Type': 'application/json' },
-          maxBodyLength: Infinity,
+          maxBodyLength: 1024 * 50,
+        timeout: 10000,
         }
       );
 
-      console.log('tags update response:', res.data);
+      log('Tags update response:', res.data);
       return res.data;
-    } catch (error) {
-      console.error('Error updating tags:', error);
+    } catch (err) {
+      logError('Error updating tags:', err);
       return null;
     }
   }
 
-  // ========= Public callback setter =========
-  static onNotification(callback: NotificationCallback) {
+  // ─── Public callback setter ───────────────────────────────────────────────
+
+  /** Register a callback to receive notification events (received / opened / initial). */
+  static onNotification(callback: NotificationCallback): void {
     NotifySphere.callback = callback;
   }
 
-  // ========= Background handler (must be called in index.js before AppRegistry) =========
-  static setBackgroundHandler() {
+  // ─── Background handler ───────────────────────────────────────────────────
+
+  /**
+   * Registers Firebase and Notifee background handlers.
+   *
+   * **IMPORTANT:** Call this in your root `index.js` file, before
+   * `AppRegistry.registerComponent()`, so it is available when the app wakes
+   * in the background — or starts from a terminated state — to handle a
+   * notification.
+   *
+   * When the app is **terminated**, React Native only runs `index.js` (a
+   * headless JS task). Your app components and `initialize()` never execute,
+   * so any custom `deliveryUrl` / `apiKey` you passed to `initialize()` are
+   * not available. Pass them here instead so they are set before the handler
+   * fires.
+   *
+   * @example
+   * // index.js
+   * import { AppRegistry } from 'react-native';
+   * import NotifySphere from 'react-native-notify-sphere';
+   * import App from './App';
+   *
+   * NotifySphere.setBackgroundHandler({
+   *   deliveryUrl: 'https://your-server.com/ondelivery/handle', // optional
+   *   apiKey: 'your-api-key',                                   // optional
+   * });
+   * AppRegistry.registerComponent('MyApp', () => App);
+   */
+  static setBackgroundHandler(config?: {
+    /**
+     * Override the delivery-confirmation URL for background/terminated state.
+     * Required if you use a custom deliveryUrl AND need it to work when the
+     * app is terminated (since initialize() won't have run yet).
+     */
+    deliveryUrl?: string;
+    /**
+     * Override the API key for background/terminated state.
+     * Required if you use apiKey AND need delivery receipts when terminated.
+     */
+    apiKey?: string;
+    /**
+     * The subscription ID returned by initialize().
+     * Required for delivery receipts to include subscription_id when the app
+     * is terminated (since initialize() won't have run yet).
+     * Persist this value (e.g. in AsyncStorage) and pass it here.
+     */
+    subscriptionId?: string;
+  }): void {
+    // Apply any config overrides immediately — before the handler fires —
+    // so they are in place even when the app starts from a terminated state.
+    if (config?.deliveryUrl) {
+      NotifySphere.deliveryUrl = NotifySphere.enforceHttps(config.deliveryUrl);
+    }
+    if (config?.apiKey) {
+      NotifySphere.apiKey = config.apiKey;
+    }
+    if (config?.subscriptionId) {
+      NotifySphere.subscriptionId = config.subscriptionId;
+    }
+
     messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-      await NotifySphere.displayLocalNotification(remoteMessage);
+      const msg = remoteMessage as FirebaseRemoteMessage;
+      // Run both in parallel — display and delivery receipt
+      await Promise.all([
+        NotifySphere.displayLocalNotification(msg),
+        NotifySphere.callbackOnDelivery(msg),
+      ]);
     });
 
     notifee.onBackgroundEvent(async ({ type, detail }) => {
-      console.log('detail323213111111', type, detail);
-
-      if (type === EventType.PRESS) {
-        console.log('detail323213', detail);
-        NotifySphere.callbackOnpress(detail.notification, 'press');
+      log('Background notifee event, type:', type);
+      if (type === EventType.PRESS && detail.notification) {
+        await NotifySphere.callbackOnpress(
+          detail.notification as NotifeeNotification,
+          'press'
+        );
       }
     });
   }
 
-  // ========= Listeners =========
-  private static setupListeners() {
-    messaging().onMessage(async (remoteMessage) => {
-      await NotifySphere.displayLocalNotification(remoteMessage);
+  // ─── Cleanup ──────────────────────────────────────────────────────────────
+
+  /**
+   * Unsubscribes all active listeners and resets internal state.
+   * Call this when you want to stop receiving notifications (e.g. on logout).
+   */
+  static destroy(): void {
+    for (const unsub of NotifySphere.unsubscribers) {
+      unsub();
+    }
+    NotifySphere.unsubscribers = [];
+    NotifySphere.initialized = false;
+    log('NotifySphere destroyed — all listeners removed');
+  }
+
+  // ─── Private: listeners ───────────────────────────────────────────────────
+
+  private static setupListeners(): void {
+    // Foreground messages — display, send delivery receipt, and fire callback
+    const unsubMessage = messaging().onMessage(async (remoteMessage) => {
+      const msg = remoteMessage as FirebaseRemoteMessage;
+      log('Foreground message received:', msg);
+      // Display and delivery receipt run in parallel for speed
+      
+      await Promise.all([
+        NotifySphere.displayLocalNotification(msg),
+        NotifySphere.callbackOnDelivery(msg),
+      ]);
+      NotifySphere.sendCallback(msg, 'received');
     });
 
-    messaging().onNotificationOpenedApp(async (remoteMessage: any) => {
-      console.log('data34234', remoteMessage);
-      NotifySphere.callbackOnpress(remoteMessage, 'opened');
-    });
+    // App brought from background via notification tap
+    const unsubOpened = messaging().onNotificationOpenedApp(
+      async (remoteMessage) => {
+        log(
+          'App opened from background via notification:',
+          remoteMessage.messageId
+        );
+        await NotifySphere.callbackOnpress(
+          remoteMessage as FirebaseRemoteMessage,
+          'opened'
+        );
+      }
+    );
 
+    // App launched from a quit state via notification tap
     messaging()
       .getInitialNotification()
       .then((remoteMessage) => {
         if (remoteMessage) {
-          NotifySphere.callbackOnpress(remoteMessage, 'initial');
+          NotifySphere.callbackOnpress(
+            remoteMessage as FirebaseRemoteMessage,
+            'initial'
+          );
         }
-      });
+      })
+      .catch((err) => logError('getInitialNotification error:', err));
 
-    notifee.onForegroundEvent(({ type, detail }) => {
-      if (type === EventType.PRESS) {
-        console.log('detail323213', detail);
-        NotifySphere.callbackOnpress(detail.notification, 'opened');
+    // Notifee foreground press events (covers in-app notification taps)
+    const unsubForeground = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.PRESS && detail.notification) {
+        NotifySphere.callbackOnpress(
+          detail.notification as NotifeeNotification,
+          'opened'
+        );
       }
     });
+
+    NotifySphere.unsubscribers.push(
+      unsubMessage,
+      unsubOpened,
+      unsubForeground
+    );
   }
 
-  // ========= Local notification display =========
-  private static async displayLocalNotification(remoteMessage: any) {
-    const soundRaw = remoteMessage.data?.sound || 'default';
-    const androidChannelId = `channel_${soundRaw}`;
-    const androidSoundName = soundRaw.replace(/\..+$/, '');
-    console.log('remoteMessage1312', remoteMessage);
+  // ─── Private: channel management ─────────────────────────────────────────
 
-    await notifee.createChannel({
-      id: androidChannelId,
-      name: `Channel ${androidSoundName}`,
+  /**
+   * Creates a notification channel if it hasn't been created yet this session.
+   * Notifee handles idempotency across app restarts; this in-memory guard
+   * prevents redundant async calls within the same session.
+   */
+  private static async ensureChannel(
+    id: string,
+    name: string,
+    sound: string
+  ): Promise<void> {
+    if (NotifySphere.createdChannels.has(id)) return;
+
+    const soundName = sound.replace(/\..+$/, '');
+    const channelDef: AndroidChannel = {
+      id,
+      name,
       importance: AndroidImportance.HIGH,
-      sound: androidSoundName !== 'default' ? androidSoundName : undefined,
-    });
+      sound: soundName !== 'default' ? soundName : undefined,
+      lights: true,
+      lightColor: '#0000FF',
+      vibration: true,
+    };
 
+    await notifee.createChannel(channelDef);
+    NotifySphere.createdChannels.add(id);
+    log('Android channel created/verified:', id);
+  }
+
+  // ─── Private: display notification ───────────────────────────────────────
+
+  private static async displayLocalNotification(
+    remoteMessage: FirebaseRemoteMessage
+  ): Promise<void> {
+    // Use || so empty strings fall back just like null/undefined
+    const soundRaw = remoteMessage.data?.sound || 'default';
+    const soundName = soundRaw.replace(/\..+$/, '');
+    const channelId = `channel_${soundName}`;
+
+    await NotifySphere.ensureChannel(channelId, `Channel ${soundName}`, soundRaw);
+
+    // Resolve image — empty string treated same as missing
     const image =
-      remoteMessage?.data?.fcm_options?.image ||
+      remoteMessage.data?.imageUrl ||
       remoteMessage.notification?.android?.imageUrl ||
       remoteMessage.notification?.imageUrl ||
-      remoteMessage.notification?.ios?.attachments?.[0]?.url;
+      remoteMessage.notification?.ios?.attachments?.[0]?.url ||
+      undefined;
+
+    // Resolve title/body — empty string treated as missing
+    const title =
+      remoteMessage.data?.title || remoteMessage.notification?.title || undefined;
+    const body =
+      remoteMessage.data?.body || remoteMessage.notification?.body || undefined;
+
+    // smallIcon falls back to 'ic_stat_onesignal_default' if empty/missing
+    // largeIcon is removed entirely
+    const smallIcon =
+      NotifySphere.resolveIcon(remoteMessage.data?.smallIcon) ?? 'ic_stat_onesignal_default';
 
     await notifee.displayNotification({
-      title: remoteMessage.notification?.title,
-      body: remoteMessage.notification?.body,
+      title,
+      body,
       android: {
-        channelId: androidChannelId,
-        importance: AndroidImportance.HIGH,
-        sound: androidSoundName !== 'default' ? androidSoundName : undefined,
-        largeIcon: image,
+        channelId,
+        smallIcon,
         style: image
-          ? {
-              type: AndroidStyle.BIGPICTURE,
-              picture: image,
-            }
+          ? { type: AndroidStyle.BIGPICTURE, picture: image }
           : undefined,
       },
       ios: {
@@ -278,25 +726,75 @@ class NotifySphere {
     });
   }
 
-  // ========= App-level callback trigger =========
-  private static sendCallback(remoteMessage: any, type?: string) {
+  /**
+   * Returns the icon string if it is a real, usable value.
+   * Treats empty string (""), "ic_stat_onesignal_default", and
+   * any other placeholder-like value as absent (returns undefined).
+   */
+  private static resolveIcon(value: string | undefined): string | undefined {
+    if (!value) return undefined; // catches "" / null / undefined
+    return value;
+  }
+
+  /**
+   * Rejects plain HTTP URLs to prevent user data (FCM token, email, phone,
+   * location) being sent over an unencrypted connection.
+   */
+  private static enforceHttps(url: string): string {
+    if (url.startsWith('http://')) {
+      logError(
+        `Insecure URL rejected: "${url}". NotifySphere only allows HTTPS endpoints.`
+      );
+      throw new Error(
+        `NotifySphere: insecure HTTP URL is not allowed — use HTTPS instead.`
+      );
+    }
+    return url;
+  }
+
+  // ─── Private: fire consumer callback ─────────────────────────────────────
+
+  /**
+   * Normalises both Firebase remote messages and Notifee notification objects
+   * into the common NotificationData shape and fires the consumer callback.
+   */
+  private static sendCallback(
+    notification: FirebaseRemoteMessage | NotifeeNotification,
+    type?: string
+  ): void {
     if (!NotifySphere.callback) return;
 
-    const image =
-      remoteMessage.notification?.android?.imageUrl ||
-      remoteMessage.notification?.imageUrl ||
-      remoteMessage.notification?.ios?.attachments?.[0]?.url;
+    // Detect shape: Firebase messages have a `notification` or `messageId` field
+    const isFirebase =
+      'notification' in notification || 'messageId' in notification;
 
-    NotifySphere.callback(
-      {
-        title: remoteMessage.notification?.title,
-        body: remoteMessage.notification?.body,
-        data: remoteMessage.data,
-        image,
-        sound: remoteMessage.data?.sound,
-      },
-      type
-    );
+    let title: string | undefined;
+    let body: string | undefined;
+    let data: Record<string, string> | undefined;
+    let image: string | undefined;
+    let sound: string | undefined;
+
+    if (isFirebase) {
+      const msg = notification as FirebaseRemoteMessage;
+      title = msg.notification?.title ?? msg.data?.title;
+      body = msg.notification?.body ?? msg.data?.body;
+      data = msg.data;
+      image =
+        msg.notification?.android?.imageUrl ||
+        msg.notification?.imageUrl ||
+        msg.notification?.ios?.attachments?.[0]?.url ||
+        msg.data?.imageUrl;
+      sound = msg.data?.sound;
+    } else {
+      const notif = notification as NotifeeNotification;
+      title = notif.title;
+      body = notif.body;
+      data = notif.data;
+      image = notif.data?.imageUrl;
+      sound = notif.data?.sound;
+    }
+
+    NotifySphere.callback({ title, body, data, image, sound }, type);
   }
 }
 

@@ -2,28 +2,36 @@ import { useEffect } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import NotifySphere from 'react-native-notify-sphere';
 
+const APP_ID = 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba';
+const PUSH_TYPE = Platform.OS === 'android' ? 'AndroidPush' : 'IOSPush';
+
 export default function App() {
   useEffect(() => {
     const init = async () => {
+      // Safe to call every app open — only hits the registration API when
+      // the FCM token has changed. Token + subscription_id are persisted
+      // automatically by the SDK.
       const subscriptionId = await NotifySphere.initialize({
         applicationUserId: 1,
-        type: Platform.OS === 'android' ? 'AndroidPush' : 'IOSPush',
+        type: PUSH_TYPE,
+        appId: APP_ID,
         name: 'Madhav Ballabh Kakkar',
         lat: '26.9124',
         long: '75.7873',
         city: 'Jaipur',
         state: 'Rajasthan',
         email: 'madhav@example.com',
-        appId: 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba',
-        phone: 9983101939,
+        phone: '9983101939',
+        debug: __DEV__,
       });
 
-      console.log('NotifySphere subscriptionId:', subscriptionId);
+      if (__DEV__) {
+        console.log('NotifySphere subscriptionId:', subscriptionId);
+      }
 
-      NotifySphere.updateTags({
-        appId: 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba',
+      await NotifySphere.updateTags({
         applicationUserId: 1,
-        type: Platform.OS === 'android' ? 'AndroidPush' : 'IOSPush',
+        type: PUSH_TYPE,
         tags: {
           gender: 'male',
           premium: 'true',
@@ -35,12 +43,23 @@ export default function App() {
     init();
 
     NotifySphere.onNotification((notification, type) => {
-      console.log('Notification received:', notification, type);
-      console.log('Event type:', type);
+      if (__DEV__) {
+        console.log('[App] Notification event:', type, notification);
+      }
+
       if (type === 'press' || type === 'opened' || type === 'initial') {
-        console.log('helloKitty');
+        // Handle notification tap — navigate, show modal, etc.
+      }
+
+      if (type === 'received') {
+        // Notification arrived in the foreground
       }
     });
+
+    // Clean up listeners when the component unmounts
+    return () => {
+      NotifySphere.destroy();
+    };
   }, []);
 
   return (

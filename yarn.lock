@@ -3357,6 +3357,28 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@react-native-async-storage/async-storage@npm:1.23.1":
+  version: 1.23.1
+  resolution: "@react-native-async-storage/async-storage@npm:1.23.1"
+  dependencies:
+    merge-options: ^3.0.4
+  peerDependencies:
+    react-native: ^0.0.0-0 || >=0.60 <1.0
+  checksum: 7096546ed4a5faf1f6e0425e2e15713575f1a7493a04524da386ff35c3844b57b8fd20544fad4157b4a61e048b10235f2f06124f262da5b327edc74fbc31e02b
+  languageName: node
+  linkType: hard
+
+"@react-native-async-storage/async-storage@npm:^1.23.1":
+  version: 1.24.0
+  resolution: "@react-native-async-storage/async-storage@npm:1.24.0"
+  dependencies:
+    merge-options: ^3.0.4
+  peerDependencies:
+    react-native: ^0.0.0-0 || >=0.60 <1.0
+  checksum: 7e56a2e97f48332f57c56ebf473b763c7ca2b1ef82f4b5f8e1c73350231ec91b8eafc4e4d1f972c4c1005da0d304816fa725dc6f07a8a7543e90f8bd16c22ab4
+  languageName: node
+  linkType: hard
+
 "@react-native-community/cli-clean@npm:20.0.0":
   version: 20.0.0
   resolution: "@react-native-community/cli-clean@npm:20.0.0"
@@ -8320,6 +8342,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"is-plain-obj@npm:^2.1.0":
+  version: 2.1.0
+  resolution: "is-plain-obj@npm:2.1.0"
+  checksum: cec9100678b0a9fe0248a81743041ed990c2d4c99f893d935545cfbc42876cbe86d207f3b895700c690ad2fa520e568c44afc1605044b535a7820c1d40e38daa
+  languageName: node
+  linkType: hard
+
 "is-regex@npm:^1.2.1":
   version: 1.2.1
   resolution: "is-regex@npm:1.2.1"
@@ -9607,6 +9636,15 @@ __metadata:
   version: 13.2.0
   resolution: "meow@npm:13.2.0"
   checksum: 79c61dc02ad448ff5c29bbaf1ef42181f1eae9947112c0e23db93e84cbc2708ecda53e54bfc6689f1e55255b2cea26840ec76e57a5773a16ca45f4fe2163ec1c
+  languageName: node
+  linkType: hard
+
+"merge-options@npm:^3.0.4":
+  version: 3.0.4
+  resolution: "merge-options@npm:3.0.4"
+  dependencies:
+    is-plain-obj: ^2.1.0
+  checksum: d86ddb3dd6e85d558dbf25dc944f3527b6bacb944db3fdda6e84a3f59c4e4b85231095f58b835758b9a57708342dee0f8de0dffa352974a48221487fe9f4584f
   languageName: node
   linkType: hard
 
@@ -11126,6 +11164,7 @@ __metadata:
     "@babel/preset-env": ^7.25.3
     "@babel/runtime": ^7.25.0
     "@notifee/react-native": ^9.1.8
+    "@react-native-async-storage/async-storage": 1.23.1
     "@react-native-community/cli": 20.0.0
     "@react-native-community/cli-platform-android": 20.0.0
     "@react-native-community/cli-platform-ios": 20.0.0
@@ -11156,6 +11195,7 @@ __metadata:
     "@eslint/js": ^9.35.0
     "@evilmartians/lefthook": ^1.12.3
     "@notifee/react-native": ^9.1.8
+    "@react-native-async-storage/async-storage": ^1.23.1
     "@react-native-community/cli": 20.0.1
     "@react-native-firebase/app": ^22.2.1
     "@react-native-firebase/messaging": ^22.2.1
@@ -11175,18 +11215,16 @@ __metadata:
     react: 19.1.0
     react-native: 0.81.1
     react-native-builder-bob: ^0.40.13
-    react-native-device-info: ^15.0.1
-    react-native-localize: ^3.6.1
     release-it: ^19.0.4
     turbo: ^2.5.6
     typescript: ^5.9.2
   peerDependencies:
+    "@notifee/react-native": ^9.1.8
+    "@react-native-async-storage/async-storage": ^1.23.1
     "@react-native-firebase/app": ^22.2.1
     "@react-native-firebase/messaging": ^22.2.1
     react: "*"
     react-native: "*"
-    react-native-device-info: ^15.0.1
-    react-native-localize: ^3.6.0
   languageName: unknown
   linkType: soft
 
