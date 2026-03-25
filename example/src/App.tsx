@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Platform } from 'react-native';
 import NotifySphere from 'react-native-notify-sphere';
 
 const APP_ID = 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba';
+export const API_TOKEN = 'your-api-token-here'; // Replace with your app's Bearer token
 const PUSH_TYPE = Platform.OS === 'android' ? 'AndroidPush' : 'IOSPush';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
         applicationUserId: 1,
         type: PUSH_TYPE,
         appId: APP_ID,
+        apiKey: API_TOKEN,
         name: 'Madhav Ballabh Kakkar',
         lat: '26.9124',
         long: '75.7873',

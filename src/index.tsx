@@ -115,12 +115,8 @@ const logError = (...args: unknown[]) =>
 
 // ─── Default endpoints ────────────────────────────────────────────────────────
 
-const DEFAULT_BASE_URL = 'https://api.notifysphere.in';
+const DEFAULT_BASE_URL = 'https://api.notifysphere.in/client/';
 // const DEFAULT_BASE_URL = 'https://apinotify.dothejob.in';
-const DEFAULT_TRACKING_URL =
-   DEFAULT_BASE_URL+'/onpress/handle';
-const DEFAULT_DELIVERY_URL =
-    DEFAULT_BASE_URL+'/delivery/confirm';;
 
 // ─── NotifySphere class ───────────────────────────────────────────────────────
 
@@ -130,8 +126,8 @@ class NotifySphere {
   private static appId: string | null = null;
   private static subscriptionId: string | null = null;
   private static baseUrl: string = DEFAULT_BASE_URL;
-  private static trackingUrl: string = DEFAULT_TRACKING_URL;
-  private static deliveryUrl: string = DEFAULT_DELIVERY_URL;
+  private static trackingUrl: string = '';
+  private static deliveryUrl: string = '';
   private static apiKey: string | null = null;
   private static unsubscribers: Array<() => void> = [];
   private static initialized = false;
@@ -291,8 +287,12 @@ class NotifySphere {
     _debug = config.debug ?? false;
     NotifySphere.appId = config.appId;
     NotifySphere.baseUrl = NotifySphere.enforceHttps(config.baseUrl ?? DEFAULT_BASE_URL);
-    NotifySphere.trackingUrl = NotifySphere.enforceHttps(config.trackingUrl ?? DEFAULT_TRACKING_URL);
-    NotifySphere.deliveryUrl = NotifySphere.enforceHttps(config.deliveryUrl ?? DEFAULT_DELIVERY_URL);
+    NotifySphere.trackingUrl = NotifySphere.enforceHttps(
+      config.trackingUrl ?? `${NotifySphere.baseUrl}${config.appId}/onpress/handle`
+    );
+    NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
+      config.deliveryUrl ?? `${NotifySphere.baseUrl}${config.appId}/delivery/confirm`
+    );
     NotifySphere.apiKey = config.apiKey ?? null;
 
     const hasPermission = await NotifySphere.checkApplicationPermission();
@@ -370,7 +370,7 @@ class NotifySphere {
     userHash?: string
   ): Promise<string | undefined> {
     const res = await axios.post(
-      `${NotifySphere.baseUrl}/apps/${config.appId}/users`,
+      `${NotifySphere.baseUrl}${config.appId}/users`,
       {
         applicationUserId: config.applicationUserId,
         token: fcmToken,
@@ -387,7 +387,12 @@ class NotifySphere {
         },
       },
       {
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(NotifySphere.apiKey
+            ? { Authorization: `Bearer ${NotifySphere.apiKey}` }
+            : {}),
+        },
         maxBodyLength: 1024 * 50,
         timeout: 10000,
       }
@@ -458,7 +463,7 @@ class NotifySphere {
 
     try {
       const res = await axios.post(
-        `${NotifySphere.baseUrl}/apps/${appId}/users`,
+        `${NotifySphere.baseUrl}${appId}/users`,
         {
           applicationUserId: params.applicationUserId,
           token: NotifySphere.fcmToken,
