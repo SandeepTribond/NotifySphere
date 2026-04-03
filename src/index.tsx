@@ -1,6 +1,8 @@
 import messaging from '@react-native-firebase/messaging';
+import DeviceInfo from 'react-native-device-info';
 import notifee, {
   AndroidImportance,
+  AndroidVisibility,
   AndroidStyle,
   EventType,
   type AndroidChannel,
@@ -9,9 +11,10 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PermissionsAndroid, Platform } from 'react-native';
 
-const STORAGE_KEY_TOKEN = '@notifysphere_fcm_token';
-const STORAGE_KEY_SUB_ID = '@notifysphere_subscription_id';
+const STORAGE_KEY_TOKEN    = '@notifysphere_fcm_token';
+const STORAGE_KEY_SUB_ID   = '@notifysphere_subscription_id';
 const STORAGE_KEY_USER_HASH = '@notifysphere_user_hash';
+const STORAGE_KEY_CHANNELS  = '@notifysphere_channels';
 
 // ─── Type definitions ──────────────────────────────────────────────────────────
 
@@ -51,6 +54,28 @@ export type NotificationCallback = (
   notification: NotificationData,
   type?: string
 ) => void;
+
+/** Shape of a single notification channel returned by the registration API */
+export interface BackendChannelConfig {
+  channel_id: string;
+  name: string;
+  description?: string;
+  /** Android importance level sent by backend — mapped to AndroidImportance */
+  Importance?: number;
+  /** 1 = enable LED, 0 = disable */
+  LED?: number;
+  led_color?: string | null;
+  /** 'Custom' | 'Default' | 'None' */
+  sound?: string;
+  /** Raw resource name used when sound === 'Custom' (e.g. 'nowait_sound') */
+  soundDetail?: string;
+  /** 1 = vibration on, 0 = off */
+  vibration?: number;
+  vibrationDetail?: string | null;
+  badge?: number;
+  /** 1 = PUBLIC, 0 = PRIVATE, -1 = SECRET */
+  lockScreen?: number;
+}
 
 export type InitializeConfig = {
   /** Your application's user ID for this device */
@@ -113,10 +138,27 @@ const warn = (...args: unknown[]) => {
 const logError = (...args: unknown[]) =>
   console.error('[NotifySphere]', ...args);
 
+// ─── SDK version ──────────────────────────────────────────────────────────────
+
+const SDK_VERSION = '1.2.1';
+
+// ─── Device info result shape ─────────────────────────────────────────────────
+
+interface DeviceInfoResult {
+  sdk: string;
+  device_model: string;
+  device_os: string;
+  device_version: string;
+  carrier: string;
+  app_version: string;
+  timezone_id: string;
+}
+
 // ─── Default endpoints ────────────────────────────────────────────────────────
 
 const DEFAULT_BASE_URL = 'https://api.notifysphere.in/client/';
 // const DEFAULT_BASE_URL = 'https://apinotify.dothejob.in';
+//const DEFAULT_BASE_URL = 'https://apinotify.dothejob.in/client/';
 
 // ─── NotifySphere class ───────────────────────────────────────────────────────
 
@@ -236,6 +278,44 @@ class NotifySphere {
     }
   }
 
+  // ─── Device info ──────────────────────────────────────────────────────────
+
+  /**
+   * Collects device metadata sent to the registration API.
+   * Uses react-native-device-info for model, carrier, and app version.
+   * Falls back gracefully if any call fails so registration is never blocked.
+   */
+  private static async getDeviceInfo(): Promise<DeviceInfoResult> {
+    try {
+      // getCarrier() is the only async call — run everything in parallel
+      const [carrier] = await Promise.all([
+        DeviceInfo.getCarrier().catch(() => ''),
+      ]);
+
+      return {
+        sdk:            SDK_VERSION,
+        device_model:   DeviceInfo.getModel(),
+        device_os:      Platform.OS,
+        device_version: DeviceInfo.getSystemVersion(),
+        carrier:        carrier ?? '',
+        app_version:    DeviceInfo.getVersion(),
+        // Intl is available in Hermes/JSC without any extra package
+        timezone_id:    Intl.DateTimeFormat().resolvedOptions().timeZone ?? '',
+      };
+    } catch (err) {
+      warn('getDeviceInfo failed, using fallback values:', err);
+      return {
+        sdk:            SDK_VERSION,
+        device_model:   '',
+        device_os:      Platform.OS,
+        device_version: String(Platform.Version),
+        carrier:        '',
+        app_version:    '',
+        timezone_id:    '',
+      };
+    }
+  }
+
   // ─── User details fingerprint ─────────────────────────────────────────────
 
   /**
@@ -286,7 +366,7 @@ class NotifySphere {
   ): Promise<string | undefined> {
     _debug = config.debug ?? false;
     NotifySphere.appId = config.appId;
-    NotifySphere.baseUrl = NotifySphere.enforceHttps(config.baseUrl ?? DEFAULT_BASE_URL);
+    NotifySphere.baseUrl = NotifySphere.enforceHttps(config.baseUrl ?? DEFAULT_BASE_URL, true);
     NotifySphere.trackingUrl = NotifySphere.enforceHttps(
       config.trackingUrl ?? `${NotifySphere.baseUrl}${config.appId}/onpress/handle`
     );
@@ -315,10 +395,20 @@ class NotifySphere {
       // ── Only call the registration API when the FCM token OR any user
       //    detail has changed. This avoids a redundant network call on every
       //    app open while still syncing updates (email, phone, location, etc.)
-      const [cachedToken, cachedUserHash] = await Promise.all([
+      const [cachedToken, cachedUserHash, cachedChannels] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEY_TOKEN),
         AsyncStorage.getItem(STORAGE_KEY_USER_HASH),
+        AsyncStorage.getItem(STORAGE_KEY_CHANNELS),
       ]);
+
+      // Re-create all backend-configured channels on every launch so they
+      // always exist before a background notification arrives — even after
+      // a reinstall or app-data clear. Notifee's createChannel is idempotent.
+      if (cachedChannels) {
+        const channels = JSON.parse(cachedChannels) as BackendChannelConfig[];
+        await NotifySphere.createChannelsFromConfig(channels);
+        log('Channels restored from cache:', channels.length);
+      }
 
       const currentUserHash = NotifySphere.buildUserHash(config);
       let subscriptionId: string | undefined = cachedSubId ?? undefined;
@@ -369,6 +459,8 @@ class NotifySphere {
     fcmToken: string,
     userHash?: string
   ): Promise<string | undefined> {
+
+    const devInfo = await NotifySphere.getDeviceInfo();
     const res = await axios.post(
       `${NotifySphere.baseUrl}${config.appId}/users`,
       {
@@ -384,6 +476,13 @@ class NotifySphere {
           email: config.email,
           phone: config.phone,
           tags: config.tags,
+          sdk: devInfo.sdk,
+          device_model: devInfo.device_model,
+          device_os: devInfo.device_os,
+          device_version: devInfo.device_version,
+          carrier: devInfo.carrier,
+          app_version: devInfo.app_version,
+          timezone_id: devInfo.timezone_id,
         },
       },
       {
@@ -401,6 +500,17 @@ class NotifySphere {
     log('Device registration response:', res.data);
     const subscriptionId: string | undefined = res.data?.subscription_id;
     NotifySphere.subscriptionId = subscriptionId ?? null;
+
+    // Extract channels from the response and create them immediately.
+    // This ensures every backend-configured channel exists on the device
+    // before any background / terminated-state notification can arrive.
+    const channels: BackendChannelConfig[] | undefined =
+      res.data?.notification_channels;
+    if (channels && channels.length > 0) {
+      await NotifySphere.createChannelsFromConfig(channels);
+      await AsyncStorage.setItem(STORAGE_KEY_CHANNELS, JSON.stringify(channels));
+      log('Channels created and cached from registration response:', channels.length);
+    }
 
     // Persist token, subscription_id, and user hash for future launch comparisons
     const hash = userHash ?? NotifySphere.buildUserHash(config);
@@ -471,9 +581,14 @@ class NotifySphere {
           user: { tags: params.tags },
         },
         {
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(NotifySphere.apiKey
+              ? { Authorization: `Bearer ${NotifySphere.apiKey}` }
+              : {}),
+          },
           maxBodyLength: 1024 * 50,
-        timeout: 10000,
+          timeout: 10000,
         }
       );
 
@@ -552,9 +667,35 @@ class NotifySphere {
       NotifySphere.subscriptionId = config.subscriptionId;
     }
 
+    // Pre-create the default channel immediately so it is guaranteed to exist
+    // (with sound enabled) before any background or terminated-state message
+    // arrives. Without this, the channel would be created inside the async
+    // background handler — on some devices that races with the notification
+    // display and results in a silent notification.
+    notifee.createChannel({
+      id: 'channel_default',
+      name: 'Default Channel',
+      importance: AndroidImportance.HIGH,
+      lights: true,
+      lightColor: '#0000FF',
+      vibration: true,
+    });
+
     messaging().setBackgroundMessageHandler(async (remoteMessage) => {
       const msg = remoteMessage as FirebaseRemoteMessage;
-      // Run both in parallel — display and delivery receipt
+
+      // Always display via Notifee so the backend-configured channel (with its
+      // custom sound, importance, and LED settings) is used in every state.
+      //
+      // On iOS, setBackgroundMessageHandler never fires for messages that
+      // contain a `notification` field — APNs intercepts them — so there is
+      // no duplicate risk on iOS.
+      //
+      // On Android, if the FCM payload contains a `notification` field, FCM
+      // will also auto-display, which causes a duplicate notification. To avoid
+      // this, the backend should send data-only messages to Android tokens
+      // (omit the top-level `notification` field). Notifee then has full
+      // control over display and sound in all states.
       await Promise.all([
         NotifySphere.displayLocalNotification(msg),
         NotifySphere.callbackOnDelivery(msg),
@@ -647,6 +788,68 @@ class NotifySphere {
     );
   }
 
+  // ─── Private: backend channel helpers ────────────────────────────────────
+
+  /** Maps the backend importance value to a Notifee AndroidImportance level. */
+  private static mapImportance(value: number | undefined): AndroidImportance {
+    const v = value ?? 3;
+    if (v >= 4) return AndroidImportance.HIGH;
+    if (v === 3) return AndroidImportance.DEFAULT;
+    if (v === 2) return AndroidImportance.LOW;
+    if (v === 1) return AndroidImportance.MIN;
+    return AndroidImportance.DEFAULT;
+  }
+
+  /** Maps the backend lockScreen value to a Notifee AndroidVisibility level. */
+  private static mapVisibility(lockScreen: number | undefined): AndroidVisibility {
+    if (lockScreen === 1)  return AndroidVisibility.PUBLIC;
+    if (lockScreen === -1) return AndroidVisibility.SECRET;
+    return AndroidVisibility.PRIVATE;
+  }
+
+  /**
+   * Creates Notifee channels from the array returned by the registration API.
+   * Called immediately after registration and on every subsequent launch from
+   * the AsyncStorage cache — so channels always exist before any notification
+   * arrives, including in background / terminated state.
+   */
+  private static async createChannelsFromConfig(
+    channels: BackendChannelConfig[]
+  ): Promise<void> {
+    for (const ch of channels) {
+      // sound === 'Custom'  → use soundDetail as the raw resource name
+      // sound === 'None'    → no sound (don't spread sound key)
+      // sound === 'Default' → omit key so Android uses system default
+      let soundValue: string | undefined;
+      if (ch.sound === 'Custom' && ch.soundDetail) {
+        soundValue = ch.soundDetail.replace(/\..+$/, ''); // strip extension
+      }
+      // 'None' and 'Default' intentionally leave soundValue as undefined
+
+      console.log('this is sound value',soundValue)
+
+      const channelDef: AndroidChannel = {
+        id:         ch.channel_id,
+        name:       ch.name,
+        importance: NotifySphere.mapImportance(ch.Importance),
+        lights:     (ch.LED ?? 0) === 1,
+        vibration:  (ch.vibration ?? 0) === 1,
+        visibility: NotifySphere.mapVisibility(ch.lockScreen),
+        ...(ch.description ? { description: ch.description } : {}),
+        ...(ch.led_color   ? { lightColor:  ch.led_color }   : {}),
+        // Only spread sound when it is a real custom resource name.
+        // For 'Default', omitting the key tells Android to use the system
+        // default sound. For 'None', omitting it silences the channel only
+        // if importance is set to LOW/MIN — HIGH importance always plays sound.
+        ...(soundValue     ? { sound: soundValue }           : {}),
+      };
+
+      await notifee.createChannel(channelDef);
+      NotifySphere.createdChannels.add(ch.channel_id);
+      log('Channel created from backend config:', ch.channel_id, `(${ch.name})`);
+    }
+  }
+
   // ─── Private: channel management ─────────────────────────────────────────
 
   /**
@@ -666,7 +869,11 @@ class NotifySphere {
       id,
       name,
       importance: AndroidImportance.HIGH,
-      sound: soundName !== 'default' ? soundName : undefined,
+      // For custom sounds, use the raw resource name (without extension).
+      // For 'default', omit the field entirely so Android uses the device's
+      // default notification sound. Setting it to undefined explicitly can
+      // be treated as "no sound" by Notifee on some devices.
+      ...(soundName !== 'default' ? { sound: soundName } : {}),
       lights: true,
       lightColor: '#0000FF',
       vibration: true,
@@ -685,7 +892,11 @@ class NotifySphere {
     // Use || so empty strings fall back just like null/undefined
     const soundRaw = remoteMessage.data?.sound || 'default';
     const soundName = soundRaw.replace(/\..+$/, '');
-    const channelId = `channel_${soundName}`;
+
+    // If the backend specifies a channelId (e.g. a UUID created on the dashboard),
+    // use it directly — this lets the backend control which channel the notification
+    // is assigned to. Otherwise fall back to a channel derived from the sound name.
+    const channelId = remoteMessage.data?.channelId || `channel_${soundName}`;
 
     await NotifySphere.ensureChannel(channelId, `Channel ${soundName}`, soundRaw);
 
@@ -703,20 +914,34 @@ class NotifySphere {
     const body =
       remoteMessage.data?.body || remoteMessage.notification?.body || undefined;
 
-    // smallIcon falls back to 'ic_stat_onesignal_default' if empty/missing
-    // largeIcon is removed entirely
-    const smallIcon =
-      NotifySphere.resolveIcon(remoteMessage.data?.smallIcon) ?? 'ic_stat_onesignal_default';
+    // Resolve smallIcon and largeIcon — both fall back to
+    // 'ic_stat_notifysphere_default' if not provided in the payload.
+    // Add a drawable with this name to your app's res/drawable folder.
+    const smallIconResolved =
+      NotifySphere.resolveIcon(remoteMessage.data?.smallIcon) ??
+      'ic_stat_notifysphere_default';
+    const largeIconResolved =
+      NotifySphere.resolveIcon(remoteMessage.data?.largeIcon) ??
+      'ic_stat_notifysphere_default';
+
+    // Determine Android expand style:
+    //  - Image present → BIGPICTURE (shows image when expanded)
+    //  - Long body (>44 chars) → BIGTEXT  (shows full text when expanded)
+    //  - Otherwise → no style (single-line collapsed notification)
+    const androidStyle = image
+      ? ({ type: AndroidStyle.BIGPICTURE, picture: image } as const)
+      : body && body.length > 44
+        ? ({ type: AndroidStyle.BIGTEXT, text: body } as const)
+        : undefined;
 
     await notifee.displayNotification({
       title,
       body,
       android: {
         channelId,
-        smallIcon,
-        style: image
-          ? { type: AndroidStyle.BIGPICTURE, picture: image }
-          : undefined,
+        smallIcon: smallIconResolved,
+        largeIcon: largeIconResolved,
+        style: androidStyle,
       },
       ios: {
         sound: soundRaw,
@@ -744,8 +969,10 @@ class NotifySphere {
   /**
    * Rejects plain HTTP URLs to prevent user data (FCM token, email, phone,
    * location) being sent over an unencrypted connection.
+   * Also ensures the URL ends with a trailing slash so appId is always
+   * correctly appended (e.g. baseUrl + appId + '/users').
    */
-  private static enforceHttps(url: string): string {
+  private static enforceHttps(url: string, ensureTrailingSlash = false): string {
     if (url.startsWith('http://')) {
       logError(
         `Insecure URL rejected: "${url}". NotifySphere only allows HTTPS endpoints.`
@@ -753,6 +980,9 @@ class NotifySphere {
       throw new Error(
         `NotifySphere: insecure HTTP URL is not allowed — use HTTPS instead.`
       );
+    }
+    if (ensureTrailingSlash && !url.endsWith('/')) {
+      return url + '/';
     }
     return url;
   }

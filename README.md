@@ -1,6 +1,6 @@
 # react-native-notify-sphere
 
-A React Native push notification SDK built on top of Firebase Cloud Messaging (FCM) and Notifee. Drop-in replacement for OneSignal with full delivery tracking, press tracking, user segmentation via tags, and rich notification support.
+A React Native push notification SDK built on Firebase Cloud Messaging (FCM) and Notifee. Handles delivery tracking, press tracking, user segmentation via tags, and rich notifications — with full Android and iOS support.
 
 ---
 
@@ -23,11 +23,12 @@ A React Native push notification SDK built on top of Firebase Cloud Messaging (F
 
 - ✅ Foreground, background, and terminated-state notification handling
 - ✅ Delivery confirmation API — fires in all three app states
-- ✅ Press/click tracking API
+- ✅ Press / click tracking API
 - ✅ Smart re-registration — only calls the API when FCM token or user details change
 - ✅ Automatic FCM token refresh handling
 - ✅ User segmentation via custom tags
 - ✅ Rich notifications — images, custom sounds, action buttons
+- ✅ Bearer token authentication on all API calls
 - ✅ Full TypeScript support
 - ✅ Android & iOS
 
@@ -37,13 +38,13 @@ A React Native push notification SDK built on top of Firebase Cloud Messaging (F
 
 - React Native `0.70+`
 - A Firebase project with Cloud Messaging enabled
-- A NotifySphere account and App ID
+- A **NotifySphere account** with an App ID and API Token
 
 ---
 
 ## Installation
 
-### Step 1: Install the package and peer dependencies
+### Step 1 — Install the package and peer dependencies
 
 ```bash
 npm install react-native-notify-sphere
@@ -55,7 +56,7 @@ npm install @notifee/react-native
 npm install @react-native-async-storage/async-storage
 ```
 
-### Step 2: iOS — install pods
+### Step 2 — iOS: install pods
 
 ```bash
 cd ios && pod install && cd ..
@@ -67,7 +68,7 @@ cd ios && pod install && cd ..
 
 ### 1. Add `google-services.json`
 
-Download from Firebase Console and place at `android/app/google-services.json`.
+Download from the Firebase Console and place it at `android/app/google-services.json`.
 
 ### 2. Configure `android/build.gradle`
 
@@ -94,7 +95,7 @@ android {
     }
 }
 
-// Must be the last line
+// Must be the last line in the file
 apply plugin: 'com.google.gms.google-services'
 ```
 
@@ -133,11 +134,11 @@ android/app/src/main/res/drawable/ic_stat_onesignal_default.png
 
 ### 1. Add `GoogleService-Info.plist`
 
-Download from Firebase Console, open Xcode, drag into project root. Ensure "Copy items if needed" is checked and it's added to all targets.
+Download from the Firebase Console, open Xcode, and drag the file into your project root. Make sure "Copy items if needed" is checked and it is added to all targets.
 
 ### 2. Enable capabilities in Xcode
 
-**Target → Signing & Capabilities → + Capability:**
+Go to **Target → Signing & Capabilities → + Capability** and add:
 - `Push Notifications`
 - `Background Modes` → check **Remote notifications**
 
@@ -163,8 +164,8 @@ Download from Firebase Console, open Xcode, drag into project root. Ensure "Copy
          withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler
 {
   completionHandler(UNNotificationPresentationOptionSound |
-                   UNNotificationPresentationOptionAlert |
-                   UNNotificationPresentationOptionBadge);
+                    UNNotificationPresentationOptionAlert |
+                    UNNotificationPresentationOptionBadge);
 }
 ```
 
@@ -172,7 +173,13 @@ Download from Firebase Console, open Xcode, drag into project root. Ensure "Copy
 
 ## Usage
 
-### `index.js` — register background handler before AppRegistry
+You need two things from your NotifySphere dashboard before you start:
+- **App ID** — identifies your application
+- **API Token** — authenticates all requests to the NotifySphere API
+
+### `index.js` — register the background handler
+
+This **must** be called before `AppRegistry.registerComponent()` so the handler is in place when the app is woken from a terminated state to handle a background notification.
 
 ```js
 import { AppRegistry } from 'react-native';
@@ -180,14 +187,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import App from './src/App';
 import { name as appName } from './app.json';
 import NotifySphere from 'react-native-notify-sphere';
+import { API_TOKEN } from './src/App';
 
-// Must be called before AppRegistry so the handler is available when the
-// app is woken from a terminated state to process a background notification.
-AsyncStorage.getItem('@notifysphere_subscription_id').then((subscriptionId) => {
+const STORAGE_KEY = '@notifysphere_subscription_id';
+
+// Load the persisted subscription_id so delivery receipts include it
+// even when the app starts from a terminated state.
+AsyncStorage.getItem(STORAGE_KEY).then((subscriptionId) => {
   NotifySphere.setBackgroundHandler({
+    apiKey: API_TOKEN,
     subscriptionId: subscriptionId ?? undefined,
-    // deliveryUrl: 'https://your-server.com/delivery/confirm', // optional
-    // apiKey: 'your-api-key',                                  // optional
   });
 });
 
@@ -202,6 +211,7 @@ import { Platform } from 'react-native';
 import NotifySphere from 'react-native-notify-sphere';
 
 const APP_ID = 'your-notifysphere-app-id';
+export const API_TOKEN = 'your-api-token'; // Get this from your NotifySphere dashboard
 const PUSH_TYPE = Platform.OS === 'android' ? 'AndroidPush' : 'IOSPush';
 
 export default function App() {
@@ -210,12 +220,13 @@ export default function App() {
       // Safe to call on every app open — only hits the registration API
       // when the FCM token or user details have changed.
       const subscriptionId = await NotifySphere.initialize({
-        applicationUserId: 123,
+        applicationUserId: 123,   // your internal user ID
         type: PUSH_TYPE,
         appId: APP_ID,
+        apiKey: API_TOKEN,
         name: 'John Doe',
         email: 'john@example.com',
-        phone: '9876543210',   // string — preserves leading zeros
+        phone: '9876543210',      // string — preserves leading zeros
         lat: '26.9124',
         long: '75.7873',
         city: 'Jaipur',
@@ -224,12 +235,12 @@ export default function App() {
           userType: 'customer',
           premium: 'true',
         },
-        debug: __DEV__,        // enable logs in development
+        debug: __DEV__,           // enable verbose logs in development
       });
 
-      console.log('subscriptionId:', subscriptionId);
+      console.log('NotifySphere subscriptionId:', subscriptionId);
 
-      // Update tags independently (no need to pass appId again)
+      // Optionally update tags without re-registering the device
       await NotifySphere.updateTags({
         applicationUserId: 123,
         type: PUSH_TYPE,
@@ -239,7 +250,7 @@ export default function App() {
 
     init();
 
-    // Listen for notification events
+    // Listen for all notification events
     NotifySphere.onNotification((notification, type) => {
       console.log('Notification event:', type, notification);
 
@@ -248,7 +259,7 @@ export default function App() {
       }
 
       if (type === 'received') {
-        // Notification arrived while app was in the foreground
+        // Notification arrived while the app was in the foreground
       }
     });
 
@@ -258,68 +269,70 @@ export default function App() {
 }
 ```
 
+> **Security note:** Never commit your `API_TOKEN` to source control. In production, read it from a secure config file or environment variable (e.g. via `react-native-config`).
+
 ---
 
 ## API Reference
 
 ### `NotifySphere.initialize(config)`
 
-Initialises the SDK, registers the device, and sets up listeners. Safe to call on every app open — the registration API is only called when the FCM token or user details have changed.
+Initialises the SDK, registers the device with the NotifySphere server, and sets up notification listeners. Safe to call on every app open — the registration API is only called when the FCM token or user details have changed since the last run.
+
+**Returns:** `Promise<string | undefined>` — the `subscription_id` assigned by the server.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `applicationUserId` | `number` | ✅ | Your internal user ID |
+| `applicationUserId` | `number` | ✅ | Your internal user ID for this device |
 | `type` | `string` | ✅ | `'AndroidPush'` or `'IOSPush'` |
-| `appId` | `string` | ✅ | NotifySphere App ID |
+| `appId` | `string` | ✅ | Your NotifySphere App ID |
+| `apiKey` | `string` | ✅ | Bearer token from your NotifySphere dashboard |
 | `name` | `string` | | User display name |
-| `email` | `string` | | User email |
-| `phone` | `string` | | User phone (string to preserve leading zeros) |
+| `email` | `string` | | User email address |
+| `phone` | `string` | | User phone number (string to preserve leading zeros) |
 | `lat` | `string` | | User latitude |
 | `long` | `string` | | User longitude |
 | `city` | `string` | | User city |
-| `state` | `string` | | User state |
-| `tags` | `Record<string, string>` | | Custom segmentation tags |
-| `baseUrl` | `string` | | Override the API base URL |
+| `state` | `string` | | User state / region |
+| `tags` | `Record<string, string>` | | Custom key-value segmentation tags |
+| `baseUrl` | `string` | | Override the API base URL (defaults to hosted service) |
 | `trackingUrl` | `string` | | Override the press-tracking endpoint |
 | `deliveryUrl` | `string` | | Override the delivery-confirmation endpoint |
-| `apiKey` | `string` | | Bearer token for tracking endpoints |
-| `debug` | `boolean` | | Enable verbose logging (default: `false`) |
-
-**Returns:** `Promise<string | undefined>` — the `subscription_id` from the server.
+| `debug` | `boolean` | | Enable verbose `[NotifySphere]` console logs (default: `false`) |
 
 ---
 
 ### `NotifySphere.setBackgroundHandler(config?)`
 
-Registers Firebase and Notifee background handlers. **Must be called in `index.js`** before `AppRegistry.registerComponent()`.
+Registers Firebase and Notifee background/terminated-state handlers. **Must be called in `index.js`** before `AppRegistry.registerComponent()`.
 
-When the app is **terminated**, `initialize()` never runs. Pass `subscriptionId` (persisted from the last `initialize()` call) here so delivery receipts include it.
+When the app is **terminated**, `initialize()` never runs, so any config you passed there is not available. Pass `apiKey` and `subscriptionId` here directly so delivery receipts still work.
 
 | Field | Type | Description |
 |---|---|---|
-| `subscriptionId` | `string` | Persisted subscription ID for terminated-state delivery receipts |
-| `deliveryUrl` | `string` | Override delivery URL for terminated state |
-| `apiKey` | `string` | Override API key for terminated state |
+| `apiKey` | `string` | Bearer token — required for authenticated delivery receipts in terminated state |
+| `subscriptionId` | `string` | Persisted subscription ID — include it so receipts are linked to the correct device |
+| `deliveryUrl` | `string` | Override the delivery URL for terminated state (optional) |
 
 ---
 
 ### `NotifySphere.onNotification(callback)`
 
-Register a callback for all notification events.
+Register a callback to receive all notification events.
 
 ```ts
 NotifySphere.onNotification((notification, type) => {
-  // type: 'received' | 'press' | 'opened' | 'initial'
   // notification: { title, body, data, image, sound }
+  // type: 'received' | 'press' | 'opened' | 'initial'
 });
 ```
 
 | Event type | When it fires |
 |---|---|
-| `received` | Notification arrived in the foreground |
-| `press` | Notifee background notification was tapped |
+| `received` | Notification arrived while the app was in the foreground |
+| `press` | A Notifee background notification was tapped |
 | `opened` | App brought from background via notification tap |
-| `initial` | App launched from quit state via notification tap |
+| `initial` | App launched from a quit state via notification tap |
 
 ---
 
@@ -335,6 +348,13 @@ await NotifySphere.updateTags({
 });
 ```
 
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `applicationUserId` | `number` | ✅ | Your internal user ID |
+| `type` | `string` | ✅ | `'AndroidPush'` or `'IOSPush'` |
+| `tags` | `Record<string, string>` | ✅ | Tags to update |
+| `appId` | `string` | | Defaults to the `appId` passed in `initialize()` |
+
 ---
 
 ### `NotifySphere.destroy()`
@@ -349,7 +369,7 @@ NotifySphere.destroy();
 
 ### `NotifySphere.checkApplicationPermission()`
 
-Requests notification permission and returns `true` if granted. Called automatically by `initialize()`.
+Requests notification permission from the OS and returns `true` if granted. Called automatically by `initialize()` — you only need to call this directly if you want to check permission status before initialising.
 
 ---
 
@@ -372,43 +392,47 @@ NotifySphere expects **data-only** FCM messages (no `notification` field). This 
 }
 ```
 
-> **Why data-only?** If a `notification` field is present, the OS handles display silently — your JS code never runs and delivery receipts cannot fire.
+> **Why data-only?** If a `notification` field is present in the FCM payload, the OS handles display silently — your JavaScript never runs and delivery receipts cannot fire in the terminated state.
 
-### Supported data fields
+### Supported `data` fields
 
 | Field | Description |
 |---|---|
 | `title` | Notification title |
-| `body` | Notification body |
-| `notification_id` | Used for delivery and press tracking |
-| `sound` | Sound name (without extension) or `'default'` |
-| `imageUrl` | URL for big-picture style notification |
+| `body` | Notification body text |
+| `notification_id` | ID used for delivery and press tracking |
+| `sound` | Sound file name without extension, or `'default'` |
+| `imageUrl` | URL for a big-picture style notification image |
 | `smallIcon` | Android small icon resource name (falls back to `ic_stat_onesignal_default`) |
-| `actionButtons` | JSON string of Notifee action buttons |
+| `actionButtons` | JSON string of Notifee action button definitions |
 
 ---
 
 ## Troubleshooting
 
+### API calls returning 401 Unauthorized
+
+Make sure you are passing `apiKey` in both `initialize()` and `setBackgroundHandler()`. The API Token can be found in your NotifySphere dashboard under your app settings.
+
 ### Notifications not displaying on Android
 
-Check that `ic_stat_onesignal_default` exists at `android/app/src/main/res/drawable/`. Without a valid small icon, Android silently drops the notification.
+Check that `ic_stat_onesignal_default.png` exists at `android/app/src/main/res/drawable/`. Android silently drops notifications with a missing or invalid small icon.
 
 ### Delivery receipt not firing in terminated state
 
-Ensure you are sending a **data-only** FCM message (no `notification` field in the payload). Also verify `setBackgroundHandler()` is called in `index.js` before `AppRegistry`.
+Make sure you are sending a **data-only** FCM message (no `notification` field in the payload). Also confirm that `setBackgroundHandler()` is called in `index.js` before `AppRegistry.registerComponent()`, and that you are passing both `apiKey` and `subscriptionId` to it.
 
-### `async-storage` v2/v3 build error
+### `async-storage` build error
 
-Use `@react-native-async-storage/async-storage@^1.23.1`. v2+ requires a custom Maven repository that is not configured by default.
+Use `@react-native-async-storage/async-storage@^1.23.1`. Version 2+ requires a custom Maven repository that is not configured by default in most React Native projects.
 
 ### iOS notifications not working
 
-Push notifications do not work on the iOS Simulator. Test on a real device with push entitlement enabled in your provisioning profile.
+Push notifications do not work on the iOS Simulator. Test on a physical device with a push-enabled provisioning profile.
 
 ### Debug logging
 
-Pass `debug: true` to `initialize()` to enable verbose `[NotifySphere]` logs:
+Pass `debug: true` (or `debug: __DEV__`) to `initialize()` to see verbose `[NotifySphere]` logs in the Metro console:
 
 ```ts
 await NotifySphere.initialize({ ..., debug: __DEV__ });
@@ -418,23 +442,27 @@ await NotifySphere.initialize({ ..., debug: __DEV__ });
 
 ## Version History
 
-### v1.1.0 (March 2026)
+### v1.2.0 (March 2026)
+
+- **Bearer token authentication** — all API endpoints now require an `apiKey` (Bearer token); added to `initialize()`, `registerDevice`, and `setBackgroundHandler()`
+- **Updated API URL structure** — endpoints now follow `client/{appId}/...` path pattern
+- **Fixed `registerDevice` URL** — corrected a template literal bug that was constructing an invalid URL
+- **Fixed `updateTags` URL** — removed incorrect `/apps/` path segment
+- **Dynamic tracking / delivery URLs** — `trackingUrl` and `deliveryUrl` are now built with `appId` at runtime rather than using static defaults
+
+### v1.1.0 (January 2026)
 
 - **Delivery confirmation API** — fires in foreground, background, and terminated state
-- **Smart re-registration** — registration API only called when FCM token or user details change; avoids redundant network call on every app open
-- **Automatic token refresh** — `onTokenRefresh` watcher re-registers without requiring `initialize()` again
+- **Smart re-registration** — registration API only called when FCM token or user details change
+- **Automatic token refresh** — `onTokenRefresh` watcher re-registers without requiring another `initialize()` call
 - **`destroy()` method** — clean listener unsubscription on logout
-- **Fixed notification display bug** — `smallIcon`/`largeIcon` empty strings (`""`) now correctly fall back to default icon
-- **Fixed `notification_id` typo** — press tracking payload now correctly sends `notification_id`
-- **`subscription_id` included** in all tracking API calls
-- **`phone` changed to `string`** — prevents corruption of numbers with leading zeros
-- **`appId` stored internally** — `updateTags` no longer requires re-passing `appId`
 - **Configurable endpoints** — `baseUrl`, `trackingUrl`, `deliveryUrl` in `initialize()`
-- **Removed hardcoded auth token** from source code
+- **`phone` changed to `string`** — prevents corruption of numbers with leading zeros
+- **`appId` stored internally** — `updateTags` no longer requires passing `appId` again
 - **`debug` flag** — all `console.log` calls gated behind `debug: true`
 - **Removed unused dependencies** — `react-native-device-info`, `react-native-localize`
 
-### v1.0.1 (January 2026)
+### v1.0.1 (October 2025)
 
 - Initial release
 

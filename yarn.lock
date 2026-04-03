@@ -11215,6 +11215,7 @@ __metadata:
     react: 19.1.0
     react-native: 0.81.1
     react-native-builder-bob: ^0.40.13
+    react-native-device-info: ^15.0.1
     release-it: ^19.0.4
     turbo: ^2.5.6
     typescript: ^5.9.2
@@ -11225,6 +11226,7 @@ __metadata:
     "@react-native-firebase/messaging": ^22.2.1
     react: "*"
     react-native: "*"
+    react-native-device-info: ">=10.0.0"
   languageName: unknown
   linkType: soft
 

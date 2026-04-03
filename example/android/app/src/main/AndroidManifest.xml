@@ -11,6 +11,13 @@
       android:allowBackup="false"
       android:theme="@style/AppTheme"
       android:supportsRtl="true">
+      <!-- Tell FCM to use our Notifee-configured channel for auto-displayed
+           notifications (background / terminated). Without this, FCM creates
+           its own silent default channel and our sound settings are ignored. -->
+      <meta-data
+        android:name="com.google.firebase.messaging.default_notification_channel_id"
+        android:value="channel_default" />
+
       <activity
         android:name=".MainActivity"
         android:label="@string/app_name"
