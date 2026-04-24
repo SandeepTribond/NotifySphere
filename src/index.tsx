@@ -140,7 +140,7 @@ const logError = (...args: unknown[]) =>
 
 // ─── SDK version ──────────────────────────────────────────────────────────────
 
-const SDK_VERSION = '1.2.1';
+const SDK_VERSION = '1.2.2';
 
 // ─── Device info result shape ─────────────────────────────────────────────────
 
@@ -349,6 +349,24 @@ class NotifySphere {
     return JSON.stringify(fields);
   }
 
+  // ─── iOS APNs registration ────────────────────────────────────────────────
+
+  /**
+   * On iOS, Firebase cannot issue an FCM token until the device is registered
+   * with APNs. `messaging().registerDeviceForRemoteMessages()` is the official
+   * react-native-firebase API that calls `registerForRemoteNotifications()`
+   * natively and resolves only when the APNs token has been delivered — no
+   * polling needed. Safe to call multiple times (idempotent).
+   */
+  private static async registerForRemoteMessagesIfNeeded(): Promise<void> {
+    try {
+      await messaging().registerDeviceForRemoteMessages();
+      log('iOS: device registered for remote messages (APNs token ready)');
+    } catch (err) {
+      warn('iOS: registerDeviceForRemoteMessages failed:', err);
+    }
+  }
+
   // ─── Initialize ──────────────────────────────────────────────────────────
 
   /**
@@ -382,6 +400,13 @@ class NotifySphere {
     }
 
     try {
+      // On iOS, ensure the device is registered with APNs before asking
+      // Firebase for an FCM token. Without this, getToken() throws
+      // "No APNS token specified" on the first launch.
+      if (Platform.OS === 'ios') {
+        await NotifySphere.registerForRemoteMessagesIfNeeded();
+      }
+
       const fcmToken = await messaging().getToken();
       NotifySphere.fcmToken = fcmToken;
 
@@ -404,7 +429,8 @@ class NotifySphere {
       // Re-create all backend-configured channels on every launch so they
       // always exist before a background notification arrives — even after
       // a reinstall or app-data clear. Notifee's createChannel is idempotent.
-      if (cachedChannels) {
+      // Channels are Android-only; skip on iOS.
+      if (Platform.OS === 'android' && cachedChannels) {
         const channels = JSON.parse(cachedChannels) as BackendChannelConfig[];
         await NotifySphere.createChannelsFromConfig(channels);
         log('Channels restored from cache:', channels.length);
@@ -428,12 +454,14 @@ class NotifySphere {
         log('Token and user details unchanged — skipping registration API call');
       }
 
-      // ── Channel and listeners are always set up (idempotent)
-      await NotifySphere.ensureChannel(
-        'channel_default',
-        'Default Channel',
-        'default'
-      );
+      // ── Android: ensure the default channel exists (idempotent)
+      if (Platform.OS === 'android') {
+        await NotifySphere.ensureChannel(
+          'channel_default',
+          'Default Channel',
+          'default'
+        );
+      }
 
       if (!NotifySphere.initialized) {
         NotifySphere.setupListeners();
@@ -502,11 +530,10 @@ class NotifySphere {
     NotifySphere.subscriptionId = subscriptionId ?? null;
 
     // Extract channels from the response and create them immediately.
-    // This ensures every backend-configured channel exists on the device
-    // before any background / terminated-state notification can arrive.
+    // Channels are Android-only — skip on iOS to avoid Notifee warnings.
     const channels: BackendChannelConfig[] | undefined =
       res.data?.notification_channels;
-    if (channels && channels.length > 0) {
+    if (Platform.OS === 'android' && channels && channels.length > 0) {
       await NotifySphere.createChannelsFromConfig(channels);
       await AsyncStorage.setItem(STORAGE_KEY_CHANNELS, JSON.stringify(channels));
       log('Channels created and cached from registration response:', channels.length);
@@ -667,37 +694,44 @@ class NotifySphere {
       NotifySphere.subscriptionId = config.subscriptionId;
     }
 
-    // Pre-create the default channel immediately so it is guaranteed to exist
-    // (with sound enabled) before any background or terminated-state message
-    // arrives. Without this, the channel would be created inside the async
-    // background handler — on some devices that races with the notification
-    // display and results in a silent notification.
-    notifee.createChannel({
-      id: 'channel_default',
-      name: 'Default Channel',
-      importance: AndroidImportance.HIGH,
-      lights: true,
-      lightColor: '#0000FF',
-      vibration: true,
-    });
+    // Pre-create the default Android channel immediately so it is guaranteed to
+    // exist before any background or terminated-state message arrives.
+    // Skipped on iOS — channels are an Android-only concept.
+    if (Platform.OS === 'android') {
+      notifee.createChannel({
+        id: 'channel_default',
+        name: 'Default Channel',
+        importance: AndroidImportance.HIGH,
+        lights: true,
+        lightColor: '#0000FF',
+        vibration: true,
+      });
+    }
 
     messaging().setBackgroundMessageHandler(async (remoteMessage) => {
       const msg = remoteMessage as FirebaseRemoteMessage;
 
-      // Always display via Notifee so the backend-configured channel (with its
-      // custom sound, importance, and LED settings) is used in every state.
+      // On iOS, when the FCM payload has a `notification` field AND
+      // `content-available: 1`, APNs auto-displays the notification AND
+      // setBackgroundMessageHandler still fires — causing a duplicate.
+      // Skip Notifee display in that case and let APNs handle it.
       //
-      // On iOS, setBackgroundMessageHandler never fires for messages that
-      // contain a `notification` field — APNs intercepts them — so there is
-      // no duplicate risk on iOS.
+      // For data-only messages (no `notification` field), APNs does nothing
+      // so Notifee must display it.
       //
-      // On Android, if the FCM payload contains a `notification` field, FCM
-      // will also auto-display, which causes a duplicate notification. To avoid
-      // this, the backend should send data-only messages to Android tokens
-      // (omit the top-level `notification` field). Notifee then has full
-      // control over display and sound in all states.
+      // On Android, the backend should send data-only messages so FCM doesn't
+      // auto-display and Notifee has full control over sound/channel/style.
+      const hasNotificationField = !!(
+        msg.notification?.title || msg.notification?.body
+      );
+      const shouldDisplay =
+        Platform.OS === 'android' ||
+        (Platform.OS === 'ios' && !hasNotificationField);
+
       await Promise.all([
-        NotifySphere.displayLocalNotification(msg),
+        shouldDisplay
+          ? NotifySphere.displayLocalNotification(msg)
+          : Promise.resolve(),
         NotifySphere.callbackOnDelivery(msg),
       ]);
     });
@@ -856,12 +890,14 @@ class NotifySphere {
    * Creates a notification channel if it hasn't been created yet this session.
    * Notifee handles idempotency across app restarts; this in-memory guard
    * prevents redundant async calls within the same session.
+   * No-op on iOS — channels are an Android-only concept.
    */
   private static async ensureChannel(
     id: string,
     name: string,
     sound: string
   ): Promise<void> {
+    if (Platform.OS !== 'android') return;
     if (NotifySphere.createdChannels.has(id)) return;
 
     const soundName = sound.replace(/\..+$/, '');
@@ -893,13 +929,6 @@ class NotifySphere {
     const soundRaw = remoteMessage.data?.sound || 'default';
     const soundName = soundRaw.replace(/\..+$/, '');
 
-    // If the backend specifies a channelId (e.g. a UUID created on the dashboard),
-    // use it directly — this lets the backend control which channel the notification
-    // is assigned to. Otherwise fall back to a channel derived from the sound name.
-    const channelId = remoteMessage.data?.channelId || `channel_${soundName}`;
-
-    await NotifySphere.ensureChannel(channelId, `Channel ${soundName}`, soundRaw);
-
     // Resolve image — empty string treated same as missing
     const image =
       remoteMessage.data?.imageUrl ||
@@ -914,46 +943,69 @@ class NotifySphere {
     const body =
       remoteMessage.data?.body || remoteMessage.notification?.body || undefined;
 
-    // Resolve smallIcon and largeIcon — both fall back to
-    // 'ic_stat_notifysphere_default' if not provided in the payload.
-    // Add a drawable with this name to your app's res/drawable folder.
-    const smallIconResolved =
-      NotifySphere.resolveIcon(remoteMessage.data?.smallIcon) ??
-      'ic_stat_notifysphere_default';
-    const largeIconResolved =
-      NotifySphere.resolveIcon(remoteMessage.data?.largeIcon) ??
-      'ic_stat_notifysphere_default';
+    if (Platform.OS === 'android') {
+      // If the backend specifies a channelId (e.g. a UUID created on the dashboard),
+      // use it directly — this lets the backend control which channel the notification
+      // is assigned to. Otherwise fall back to a channel derived from the sound name.
+      const channelId = remoteMessage.data?.channelId || `channel_${soundName}`;
+      await NotifySphere.ensureChannel(channelId, `Channel ${soundName}`, soundRaw);
 
-    // Determine Android expand style:
-    //  - Image present → BIGPICTURE (shows image when expanded)
-    //  - Long body (>44 chars) → BIGTEXT  (shows full text when expanded)
-    //  - Otherwise → no style (single-line collapsed notification)
-    const androidStyle = image
-      ? ({ type: AndroidStyle.BIGPICTURE, picture: image } as const)
-      : body && body.length > 44
-        ? ({ type: AndroidStyle.BIGTEXT, text: body } as const)
-        : undefined;
+      // Resolve smallIcon and largeIcon — both fall back to
+      // 'ic_stat_notifysphere_default' if not provided in the payload.
+      // Add a drawable with this name to your app's res/drawable folder.
+      const smallIconResolved =
+        NotifySphere.resolveIcon(remoteMessage.data?.smallIcon) ??
+        'ic_stat_notifysphere_default';
+      const largeIconResolved =
+        NotifySphere.resolveIcon(remoteMessage.data?.largeIcon) ??
+        'ic_stat_notifysphere_default';
 
-    await notifee.displayNotification({
-      title,
-      body,
-      android: {
-        channelId,
-        smallIcon: smallIconResolved,
-        largeIcon: largeIconResolved,
-        style: androidStyle,
-      },
-      ios: {
-        sound: soundRaw,
-        attachments: image ? [{ url: image }] : undefined,
-        foregroundPresentationOptions: {
-          alert: true,
-          badge: true,
-          sound: true,
+      // Determine Android expand style:
+      //  - Image present → BIGPICTURE (shows image when expanded)
+      //  - Long body (>44 chars) → BIGTEXT  (shows full text when expanded)
+      //  - Otherwise → no style (single-line collapsed notification)
+      const androidStyle = image
+        ? ({ type: AndroidStyle.BIGPICTURE, picture: image } as const)
+        : body && body.length > 44
+          ? ({ type: AndroidStyle.BIGTEXT, text: body } as const)
+          : undefined;
+
+      await notifee.displayNotification({
+        title,
+        body,
+        android: {
+          channelId,
+          smallIcon: smallIconResolved,
+          largeIcon: largeIconResolved,
+          style: androidStyle,
         },
-      },
-      data: remoteMessage.data,
-    });
+        data: remoteMessage.data,
+      });
+    } else {
+      // iOS foreground: APNs never auto-displays notifications while the app is
+      // in the foreground, so Notifee must always display it manually.
+      // Background: setBackgroundMessageHandler only fires for data-only FCM
+      // messages (APNs intercepts notification-field messages before JS runs),
+      // so Notifee display is always correct here too — no duplicate risk.
+
+      // Resolve iOS sound — strip extension, Notifee expects just the resource name
+      const iosSound = soundName === 'default' ? 'default' : soundRaw;
+
+      await notifee.displayNotification({
+        title,
+        body,
+        ios: {
+          sound: iosSound,
+          attachments: image ? [{ url: image }] : undefined,
+          foregroundPresentationOptions: {
+            alert: true,
+            badge: true,
+            sound: true,
+          },
+        },
+        data: remoteMessage.data,
+      });
+    }
   }
 
   /**

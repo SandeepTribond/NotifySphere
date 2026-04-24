@@ -38,5 +38,22 @@ target 'NotifySphereExample' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Fix: fmt v11 uses consteval which is a C++20 feature.
+    # Force the fmt pod to compile as C++17 so consteval is never activated.
+    installer.pods_project.targets.each do |target|
+      if target.name == 'fmt'
+        target.build_configurations.each do |cfg|
+          cfg.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        end
+      end
+    end
   end
+end
+
+
+
+target 'NotifySphere' do
+  use_frameworks! :linkage => :static
+  pod 'Firebase/Messaging'
 end

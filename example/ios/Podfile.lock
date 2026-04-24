@@ -67,7 +67,7 @@ PODS:
     - nanopb/encode (= 3.30910.0)
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
-  - NotifySphere (0.1.0):
+  - NotifySphere (1.2.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -2428,6 +2428,36 @@ PODS:
     - React-perflogger (= 0.81.1)
     - React-utils (= 0.81.1)
     - SocketRocket
+  - RNCAsyncStorage (1.23.1):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SocketRocket
+    - Yoga
+  - RNDeviceInfo (15.0.1):
+    - React-Core
   - RNFBApp (22.4.0):
     - Firebase/CoreOnly (= 11.15.0)
     - React-Core
@@ -2436,6 +2466,34 @@ PODS:
     - FirebaseCoreExtension
     - React-Core
     - RNFBApp
+  - RNLocalize (3.6.1):
+    - boost
+    - DoubleConversion
+    - fast_float
+    - fmt
+    - glog
+    - hermes-engine
+    - RCT-Folly
+    - RCT-Folly/Fabric
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SocketRocket
+    - Yoga
   - RNNotifee (9.1.8):
     - React-Core
     - RNNotifee/NotifeeCore (= 9.1.8)
@@ -2519,8 +2577,11 @@ DEPENDENCIES:
   - ReactAppDependencyProvider (from `build/generated/ios`)
   - ReactCodegen (from `build/generated/ios`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
+  - RNDeviceInfo (from `../node_modules/react-native-device-info`)
   - "RNFBApp (from `../node_modules/@react-native-firebase/app`)"
   - "RNFBMessaging (from `../node_modules/@react-native-firebase/messaging`)"
+  - RNLocalize (from `../node_modules/react-native-localize`)
   - "RNNotifee (from `../node_modules/@notifee/react-native`)"
   - SocketRocket (~> 0.7.1)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
@@ -2685,10 +2746,16 @@ EXTERNAL SOURCES:
     :path: build/generated/ios
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
+  RNCAsyncStorage:
+    :path: "../node_modules/@react-native-async-storage/async-storage"
+  RNDeviceInfo:
+    :path: "../node_modules/react-native-device-info"
   RNFBApp:
     :path: "../node_modules/@react-native-firebase/app"
   RNFBMessaging:
     :path: "../node_modules/@react-native-firebase/messaging"
+  RNLocalize:
+    :path: "../node_modules/react-native-localize"
   RNNotifee:
     :path: "../node_modules/@notifee/react-native"
   Yoga:
@@ -2711,78 +2778,81 @@ SPEC CHECKSUMS:
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
   hermes-engine: 4f8246b1f6d79f625e0d99472d1f3a71da4d28ca
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
-  NotifySphere: d4f29fa806b137593f489431a3527a2b3653e73e
+  NotifySphere: 3c81d9af89a772efc04492f5989b7b5dc915557f
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
-  RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
+  RCT-Folly: 59ec0ac1f2f39672a0c6e6cecdd39383b764646f
   RCTDeprecation: c4b9e2fd0ab200e3af72b013ed6113187c607077
   RCTRequired: e97dd5dafc1db8094e63bc5031e0371f092ae92a
   RCTTypeSafety: 720403058b7c1380c6a3ae5706981d6362962c89
   React: f1486d005993b0af01943af1850d3d4f3b597545
   React-callinvoker: 133f69368c8559e744efa345223625d412f5dfbe
-  React-Core: 559823921b4f294c2840fa8238ca958a29ddc211
-  React-CoreModules: c41e7bbfabbc420783bb926f45837a0d5e53341e
-  React-cxxreact: 9cb9fa738274a1b36b97ede09c8a6717dec1a20b
+  React-Core: d6d8c1fd33697cec596d33b820456505ee305686
+  React-CoreModules: 81ab751a7668ba161440f9623b994e1a6a3019fe
+  React-cxxreact: 16f2a2751d0dce8b569f23c1914edc90f655b01b
   React-debug: d4dd8b9174acc68da48a3a3142226f261b2cb396
-  React-defaultsnativemodule: e864080ab91e49b9bab9660c3b5c6b98ee6c240a
-  React-domnativemodule: 85767121bbc74f9d0dd3a7cb2ea52c35e875e414
-  React-Fabric: cecbea344f271a2b4492466c849af0d4a4d14f22
-  React-FabricComponents: 882e9c2a5474ed7720ee045e7fc277372feb0fd7
-  React-FabricImage: e156a269356cbad4ffa353ac3dae3ba82ea152fd
-  React-featureflags: ee9192bbf6de80f2bffaf215745782bab9e54055
-  React-featureflagsnativemodule: 72b5a385f9e60d8cbcc5dd5017816001ae4e9f3e
-  React-graphics: 3253493eeb93788ba254d610928128eaccd1ba4d
-  React-hermes: 811606c0aca5a3f9c6fa8e4994e02ca8f677e68e
-  React-idlecallbacksnativemodule: dd71c48d7f2e1f35031a8da8dec11228439ba498
-  React-ImageManager: d7a4bab16976900b4cc29ce1dfaf669fd4a586f2
-  React-jserrorhandler: 1730fe458229969d6de405149154d1d368b8ea31
-  React-jsi: ece95417fedbed0e7153a855cb8342b7c72ab75e
-  React-jsiexecutor: 2b0bb644b533df2f5c0cd6ade9a4560d0bf1dd84
-  React-jsinspector: 2d6b5b3d0e528f7b796796d79f360a95b0f8365b
-  React-jsinspectorcdp: 3337aa3a6c0fcd06a6c6d8a689039acfa15fa792
-  React-jsinspectornetwork: c75fb6ef29feaf9381405b676f4350b3115a5607
-  React-jsinspectortracing: 94f6858d1a2436ea130c2ce4023ff6a88172d47f
-  React-jsitooling: 19224f2f6deb70458d5a31f2bd4ee7b9e9fb1dd9
-  React-jsitracing: 09f434f39e1f2d7bd4da00422049898dc2823406
-  React-logger: 7aef4d74123e5e3d267e5af1fbf5135b5a0d8381
-  React-Mapbuffer: bd9e0b326013ba621165bad90b83979fcdaebe6f
-  React-microtasksnativemodule: b0aca6ebaea96c8c5ecdf3050ef6d04eda73ff18
-  react-native-safe-area-context: ee1e8e2a7abf737a8d4d9d1a5686a7f2e7466236
-  React-NativeModulesApple: be767e4e204802b135c68a81024f5b758bc0653e
+  React-defaultsnativemodule: 947779fa7b5be3b810290d2a645730324442fc53
+  React-domnativemodule: 75d68a04e9cc2b0f95168bf3938d00a8facff821
+  React-Fabric: d046dece5e14b897d9db8cecaffceedb28d50b70
+  React-FabricComponents: 65a2226c25c5a9dfdd84e88f5856d02520ca7d54
+  React-FabricImage: aff218fbbfe87ac982a8843b98e548af475c6652
+  React-featureflags: 2f48efbec564cd7b9e293ecbfe2d4e4e18afbf71
+  React-featureflagsnativemodule: 332f7642f453abd4b153b3514e029590a3dc10ef
+  React-graphics: 9bc0a0e60e8b7120069d4cc94c510a556131350f
+  React-hermes: 2179a018b2f86652f6f33ef23efd9e5ac284b247
+  React-idlecallbacksnativemodule: 1185a58c5b8f3f8a097972377d9657782a2e5f82
+  React-ImageManager: ff19bddc9038fcd5a622a9f5563b406b07bdca35
+  React-jserrorhandler: 3aa54cb05588b376febe7af0a116f1438e3dd2b3
+  React-jsi: b27208f8866e53238534f65f304903e4eff25e05
+  React-jsiexecutor: 1d3e827797f592c393860dea91aaa6d53c7715e7
+  React-jsinspector: ba215b2e79c802c252a5d5680a29fc8ddc1d2735
+  React-jsinspectorcdp: 157d33c8aff6059d91c45d1ede6cde8a9b79d817
+  React-jsinspectornetwork: 92c31e8ea8dea2725761e8fe4afcfe809c872930
+  React-jsinspectortracing: 07d2c8e8c4002b35abe0860cf664bde44d801b4b
+  React-jsitooling: 6130f55aca1974c16d4432624fb0e98f437c51ad
+  React-jsitracing: b118900530cb17345cb7dbb00ac00e949b78a7f1
+  React-logger: d27dd2000f520bf891d24f6e141cde34df41f0ee
+  React-Mapbuffer: 7da9087dde0a3e7696a9f4b4e927617e1cf6dbeb
+  React-microtasksnativemodule: fcb082600de49132132a07fceddf8c47fdadb020
+  react-native-safe-area-context: 3e0a25a843c40ad5efdf2bef93fdd95ad7229650
+  React-NativeModulesApple: 8700c27bb8df3fcd50f7ff4acee32010b2d35e4d
   React-oscompat: b12c633e9c00f1f99467b1e0e0b8038895dae436
-  React-perflogger: 58d12c4e5df1403030c97b9c621375c312cca454
-  React-performancetimeline: e0d95d9b6d581cbe01722fc4ee9a0dcb9617a6de
+  React-perflogger: ccf4fd2664b00818645e588623c7531a8b32d114
+  React-performancetimeline: 6a80cf576b1d3c7415c07418038f5b279e17e75a
   React-RCTActionSheet: 3f741a3712653611a6bfc5abceb8260af9d0b218
-  React-RCTAnimation: 408ad69ea136e99a463dd33eadecc29e586b3d72
-  React-RCTAppDelegate: f03b46e80b8a3dbfa84b35abfe123e02f3ceef83
-  React-RCTBlob: bd42e92a00ad22eaab92ffe5c137e7a2f725887a
-  React-RCTFabric: f8322f0f293d76569beefbf942be2796e59e6de1
-  React-RCTFBReactNativeSpec: 5db3e244c6fc9adebdaff632168fc9fdd5273574
-  React-RCTImage: 0f1c74f7cd20027f8c34976a211b35d4263a0add
-  React-RCTLinking: 6d7dfc3a74110df56c3a73cc7626bf4415656542
-  React-RCTNetwork: 6a25d8645a80d5b86098675ca39bf8fcf1afa08b
-  React-RCTRuntime: 6ee42a86209296e18938d446ec05525ac889e33e
-  React-RCTSettings: 651d9ae2cdd32f547ad0d225a2c13886d6ad2358
-  React-RCTText: 9bc66cd288478e23195e01f5cb45eba79986b2b4
-  React-RCTVibration: 371226f5667a00c76d792dcdb5c2e0fcbcde0c3b
+  React-RCTAnimation: 2edeebfba175cc2e937e2752209ab605d3c48f21
+  React-RCTAppDelegate: e292321e83ee966897244a032216a70930b758d6
+  React-RCTBlob: 8dfb24b6dd4a5af45e1e59e2fd925b2df1e44d08
+  React-RCTFabric: 09c645c3b76edb54b3d88644a6bf2b7822960460
+  React-RCTFBReactNativeSpec: bc9414bed550f8e260d5d6bcbb3a443b6646ab40
+  React-RCTImage: c7fe8c2f2ae8bad98ab4d944d5d50a889da4b652
+  React-RCTLinking: 9ac21ce9f1af914bb01c06af3752db2ec840d0ee
+  React-RCTNetwork: 09a5de71d757dbad4b3fe3615839290200b932aa
+  React-RCTRuntime: f5c9a5f2c2f1d7acee4b47c3712dbdb6d5bdda2e
+  React-RCTSettings: fee112652ac7569ea9abe910206e1685f5f9adba
+  React-RCTText: 7ee9d0bc16b3a8149f8df6d70c48e724d0db1d89
+  React-RCTVibration: 619d613abaeb05f6fbc2b2e5e33f724f05df8eb8
   React-rendererconsistency: 13a33f6c0f6acfc02e8613b9b86ad42a47686270
-  React-renderercss: 3087877775222c08813e96935ab1d30ba76188d2
-  React-rendererdebug: bca6bc0039995664e262ef1cf84382d2832e858d
-  React-RuntimeApple: c54a5a96836da5034d820c5989f4f042f6b50b86
-  React-RuntimeCore: cccf9427142d2c5d177873ee3c36d28fea30d2a4
-  React-runtimeexecutor: ddedb7e6e8d7104b901ad56aa9e6828cda927272
-  React-RuntimeHermes: c7a9778619c32d84dc22df00f9a2aa4b2a9ea04a
-  React-runtimescheduler: 5114a56c333cf4c1c19056cd8779d333567d9eb1
-  React-timing: 16eb1255bf7da45c72214c8908064e6c2cc10205
-  React-utils: 2d674da7c078d11350d931be2240bbdbfda9697d
-  ReactAppDependencyProvider: 3eb9096cb139eb433965693bbe541d96eb3d3ec9
-  ReactCodegen: 7aaf71af219f9f5daa7ad0c8457f3b148aaed563
-  ReactCommon: e5df435ef0892875b7d503fbe3ec73a1a3712049
-  RNFBApp: 90cf0209fb8f0460ab069a7de857d7ec851c8476
-  RNFBMessaging: 37dd861b8600ec2ae9a06ba42ae4285cb707a731
-  RNNotifee: 5e3b271e8ea7456a36eec994085543c9adca9168
+  React-renderercss: 15fb7d4d47ad853f7a75c549a64a055edb7da7d2
+  React-rendererdebug: cd1f688babdf457f60d4afc2ccb4fb5d4ccc36df
+  React-RuntimeApple: 0d0c3a50b8fd5e54dcc3a9f34cda2e82703438bf
+  React-RuntimeCore: 789b892955ae47ba52bb3f2a56a2dce2b920eb1f
+  React-runtimeexecutor: f1590f1ea2791612c54e9040dc0391819ee7453a
+  React-RuntimeHermes: 0af2ae30dd7e463154118ffd109fcb86374d27ff
+  React-runtimescheduler: be7aa990bf2f6f1fc1448a7e8f7173a87003af4b
+  React-timing: 4ef0e73b6b097630487d2bd7556f8d709b989373
+  React-utils: 5c789bfda2c20ee08a1ef588a585643b23830b93
+  ReactAppDependencyProvider: 448b422f8af1dedf81374eacc90a15439a0ed7f5
+  ReactCodegen: e503a87752793b3e7870d97983ba23ffcb8ed497
+  ReactCommon: 2fcc942644c1b8b4387747aa5d41a6d15d4af503
+  RNCAsyncStorage: 3af3e75b4531921c245b7e5a0f84339ef1095620
+  RNDeviceInfo: 53f9c84e28e854a308d3e548e25ef120b4615531
+  RNFBApp: 2c88b4fc4bcecf25ff9077abde08f4b1cbaff4c6
+  RNFBMessaging: 67ede2b8c07a00902f24dd5819b2c75901a75669
+  RNLocalize: 1f585c9f1c4ede63f44b1618d2b3ec711cd49983
+  RNNotifee: 4a6ee5c7deaf00e005050052d73ee6315dff7ec9
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
-  Yoga: f95f7e60346fa6828def95fbe5017346ccc8940e
+  Yoga: bfddd0e843d9fd082efa5b8d9dbc517df4f7e177
 
-PODFILE CHECKSUM: f64d1bc85a91a265fdd0e4a9a1b86f1e380d4d72
+PODFILE CHECKSUM: 536362bef391208627a7a36569fc60da6cbd3b3e
 
 COCOAPODS: 1.16.2
