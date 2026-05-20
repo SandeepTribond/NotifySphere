@@ -15,6 +15,7 @@ const STORAGE_KEY_TOKEN    = '@notifysphere_fcm_token';
 const STORAGE_KEY_SUB_ID   = '@notifysphere_subscription_id';
 const STORAGE_KEY_USER_HASH = '@notifysphere_user_hash';
 const STORAGE_KEY_CHANNELS  = '@notifysphere_channels';
+const STORAGE_KEY_CHANNEL_MIGRATED = '@notifysphere_channel_default_migrated_v1';
 
 // ─── Type definitions ──────────────────────────────────────────────────────────
 
@@ -140,7 +141,7 @@ const logError = (...args: unknown[]) =>
 
 // ─── SDK version ──────────────────────────────────────────────────────────────
 
-const SDK_VERSION = '1.2.2';
+const SDK_VERSION = '1.2.6';
 
 // ─── Device info result shape ─────────────────────────────────────────────────
 
@@ -156,9 +157,13 @@ interface DeviceInfoResult {
 
 // ─── Default endpoints ────────────────────────────────────────────────────────
 
+// Production NotifySphere API. Do NOT switch this to a staging URL before
+// running `yarn prepare` / `npm publish` — the value is compiled into `lib/`
+// and ships to every consumer.
+// Production NotifySphere API. Do NOT switch this to a staging URL before
+// running `yarn prepare` / `npm publish` — the value is compiled into `lib/`
+// and ships to every consumer.
 const DEFAULT_BASE_URL = 'https://api.notifysphere.in/client/';
-// const DEFAULT_BASE_URL = 'https://apinotify.dothejob.in';
-//const DEFAULT_BASE_URL = 'https://apinotify.dothejob.in/client/';
 
 // ─── NotifySphere class ───────────────────────────────────────────────────────
 
@@ -456,6 +461,29 @@ class NotifySphere {
 
       // ── Android: ensure the default channel exists (idempotent)
       if (Platform.OS === 'android') {
+        // One-time migration: pre-v1.2.5 builds created `channel_default`
+        // without an explicit `sound` field, which on some devices left the
+        // channel permanently silent (channels are immutable on Android). The
+        // first time we run on v1.2.5+, delete that legacy channel so the
+        // corrected definition (sound: 'default') can take effect. This is
+        // safe to do in `initialize()` because the app is in the foreground
+        // here — there are no active background notifications to accidentally
+        // cancel (unlike in `setBackgroundHandler`).
+        try {
+          const migrated = await AsyncStorage.getItem(
+            STORAGE_KEY_CHANNEL_MIGRATED
+          );
+          if (!migrated) {
+            await notifee.deleteChannel('channel_default').catch(() => {
+              /* didn't exist — fine */
+            });
+            await AsyncStorage.setItem(STORAGE_KEY_CHANNEL_MIGRATED, '1');
+            log('channel_default migrated (deleted) — will be recreated below');
+          }
+        } catch (err) {
+          warn('channel_default migration failed:', err);
+        }
+
         await NotifySphere.ensureChannel(
           'channel_default',
           'Default Channel',
@@ -464,10 +492,12 @@ class NotifySphere {
       }
 
       if (!NotifySphere.initialized) {
+         console.log('🚀 setupListeners calling...');
         NotifySphere.setupListeners();
         // Watch for token refreshes (Firebase can rotate the token silently)
         NotifySphere.watchTokenRefresh(config);
         NotifySphere.initialized = true;
+         console.log('✅ setupListeners done');
       }
 
       return subscriptionId;
@@ -676,16 +706,54 @@ class NotifySphere {
     apiKey?: string;
     /**
      * The subscription ID returned by initialize().
-     * Required for delivery receipts to include subscription_id when the app
-     * is terminated (since initialize() won't have run yet).
-     * Persist this value (e.g. in AsyncStorage) and pass it here.
+     * If omitted, the SDK will read it from AsyncStorage inside the handler
+     * so the registration itself can stay synchronous (required by FCM).
      */
     subscriptionId?: string;
+    /**
+     * Your NotifySphere appId. Used to derive the default `deliveryUrl`
+     * (`${baseUrl}${appId}/delivery/confirm`) when the app is started from a
+     * terminated state and `initialize()` has not yet run.
+     */
+    appId?: string;
+    /**
+     * Override the base URL for the NotifySphere API. Defaults to the hosted
+     * service. Used together with `appId` to derive `deliveryUrl`.
+     */
+    baseUrl?: string;
+    /** Enable verbose logging. Defaults to false. */
+    debug?: boolean;
   }): void {
-    // Apply any config overrides immediately — before the handler fires —
-    // so they are in place even when the app starts from a terminated state.
+    // ────────────────────────────────────────────────────────────────────────
+    // IMPORTANT: this function MUST be called synchronously at the top of
+    // index.js (before AppRegistry.registerComponent). Firebase requires the
+    // background message handler to be registered at module-evaluation time,
+    // otherwise messages delivered in killed/background state will be dropped
+    // because no handler is registered yet when the headless JS task starts.
+    //
+    // Anything that needs AsyncStorage (subscription_id) MUST be loaded
+    // *inside* the async handler below — not before this call.
+    // ────────────────────────────────────────────────────────────────────────
+
+    if (config?.debug) _debug = true;
+
+    // Apply any config overrides immediately so they are in place even when
+    // the app starts from a terminated state.
     if (config?.deliveryUrl) {
       NotifySphere.deliveryUrl = NotifySphere.enforceHttps(config.deliveryUrl);
+    } else if (config?.appId) {
+      // Derive the default delivery URL from appId + baseUrl so the SDK can
+      // post delivery receipts even when initialize() has not yet run
+      // (terminated-state launches).
+      const base = NotifySphere.enforceHttps(
+        config.baseUrl ?? DEFAULT_BASE_URL,
+        true
+      );
+      NotifySphere.baseUrl = base;
+      NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
+        `${base}${config.appId}/delivery/confirm`
+      );
+      NotifySphere.appId = config.appId;
     }
     if (config?.apiKey) {
       NotifySphere.apiKey = config.apiKey;
@@ -697,43 +765,91 @@ class NotifySphere {
     // Pre-create the default Android channel immediately so it is guaranteed to
     // exist before any background or terminated-state message arrives.
     // Skipped on iOS — channels are an Android-only concept.
+    //
+    // IMPORTANT: explicitly set `sound: 'default'` so Notifee binds the
+    // channel to RingtoneManager.TYPE_NOTIFICATION. Android NotificationChannels
+    // are immutable after creation — if anything (e.g. the FCM library on a
+    // previous app version) created `channel_default` silently first, every
+    // subsequent push to this channel will be silent forever for that user.
+    //
+    // ⚠️ DO NOT call `notifee.deleteChannel` here.
+    //
+    // In terminated state Android dispatches the FCM message and starts the
+    // headless JS task in parallel. If the payload has a `notification` field,
+    // FCM has ALREADY posted the notification to `channel_default` by the time
+    // our JS runs — and deleting the channel cancels every active notification
+    // attached to it. The user sees the notification "pop in and immediately
+    // disappear" because our migration killed it. Channel cleanup must happen
+    // somewhere safe (in `initialize()` behind an AsyncStorage flag), never in
+    // the background-handler module init path.
     if (Platform.OS === 'android') {
       notifee.createChannel({
         id: 'channel_default',
         name: 'Default Channel',
         importance: AndroidImportance.HIGH,
+        sound: 'default',
         lights: true,
         lightColor: '#0000FF',
         vibration: true,
+        visibility: AndroidVisibility.PUBLIC,
       });
     }
 
     messaging().setBackgroundMessageHandler(async (remoteMessage) => {
       const msg = remoteMessage as FirebaseRemoteMessage;
 
-      // On iOS, when the FCM payload has a `notification` field AND
-      // `content-available: 1`, APNs auto-displays the notification AND
-      // setBackgroundMessageHandler still fires — causing a duplicate.
-      // Skip Notifee display in that case and let APNs handle it.
-      //
-      // For data-only messages (no `notification` field), APNs does nothing
-      // so Notifee must display it.
-      //
-      // On Android, the backend should send data-only messages so FCM doesn't
-      // auto-display and Notifee has full control over sound/channel/style.
-      const hasNotificationField = !!(
-        msg.notification?.title || msg.notification?.body
+      // Diagnostic — always-on so users can confirm the handler is firing
+      // even without enabling debug mode. Remove or convert to log() once
+      // background delivery is verified in production.
+      console.log(
+        '[NotifySphere] background handler fired.',
+        'hasNotificationField=', msg.notification != null,
+        'notification=', JSON.stringify(msg.notification ?? null),
+        'data=', JSON.stringify(msg.data ?? {})
       );
-      const shouldDisplay =
-        Platform.OS === 'android' ||
-        (Platform.OS === 'ios' && !hasNotificationField);
 
-      await Promise.all([
-        shouldDisplay
-          ? NotifySphere.displayLocalNotification(msg)
-          : Promise.resolve(),
-        NotifySphere.callbackOnDelivery(msg),
-      ]);
+      // Lazy-load subscription_id from AsyncStorage if it wasn't injected via
+      // setBackgroundHandler({ subscriptionId }). Async work is safe HERE
+      // because the handler itself is already registered.
+      if (!NotifySphere.subscriptionId) {
+        try {
+          const cachedSubId = await AsyncStorage.getItem(STORAGE_KEY_SUB_ID);
+          if (cachedSubId) NotifySphere.subscriptionId = cachedSubId;
+        } catch (err) {
+          warn('Failed to read cached subscription_id in background:', err);
+        }
+      }
+
+      // ────────────────────────────────────────────────────────────────────
+      // Background / terminated state — display is the OS's job, NOT ours.
+      //
+      // For the overwhelming majority of consumers the FCM payload includes
+      // a top-level `notification` field, which means:
+      //   - Android: FCM library auto-displays the notification using
+      //              `channel_default` (the channel id we pre-create above).
+      //   - iOS    : APNs auto-displays.
+      // Both platforms handle sound, channel, importance, large/small icon,
+      // lock-screen visibility, etc. correctly without any JS work.
+      //
+      // Earlier versions of this SDK ALSO called `displayLocalNotification`
+      // from this handler so that data-only payloads would render via
+      // Notifee. The problem: when the backend sent a mixed payload (the
+      // common case), the OS displayed once and the SDK displayed again →
+      // two notifications, the second one frequently blank (the OS-side
+      // title/body lived in the `notification` block while the SDK looked
+      // them up in `data`). We've removed that call entirely.
+      //
+      // The handler is now single-purpose in background: fire the delivery
+      // confirmation API. Display is delegated to FCM/APNs.
+      //
+      // If a consumer truly needs data-only-payload support (no OS auto-
+      // display, JS draws the notification), they should:
+      //   - register a Notifee `onBackgroundEvent` of their own that calls
+      //     `notifee.displayNotification`, or
+      //   - add a `displayInBackground: true` opt-in to setBackgroundHandler
+      //     in a future release.
+      // ────────────────────────────────────────────────────────────────────
+      await NotifySphere.callbackOnDelivery(msg);
     });
 
     notifee.onBackgroundEvent(async ({ type, detail }) => {
@@ -764,63 +880,124 @@ class NotifySphere {
 
   // ─── Private: listeners ───────────────────────────────────────────────────
 
-  private static setupListeners(): void {
-    // Foreground messages — display, send delivery receipt, and fire callback
-    const unsubMessage = messaging().onMessage(async (remoteMessage) => {
-      const msg = remoteMessage as FirebaseRemoteMessage;
-      log('Foreground message received:', msg);
-      // Display and delivery receipt run in parallel for speed
-      
-      await Promise.all([
-        NotifySphere.displayLocalNotification(msg),
-        NotifySphere.callbackOnDelivery(msg),
-      ]);
-      NotifySphere.sendCallback(msg, 'received');
-    });
+private static setupListeners(): void {
+  // ✅ Foreground messages
+  const unsubMessage = messaging().onMessage(async (remoteMessage) => {
+   
+   console.log('🔔 onMessage FIRED'); // ← yeh aata hai?
+    const msg = remoteMessage as FirebaseRemoteMessage;
+    console.log('🔔 MSG DATA:', JSON.stringify(msg));
+    
+    console.log('🔔 FOREGROUND onMessage fired:', JSON.stringify(msg));
 
-    // App brought from background via notification tap
-    const unsubOpened = messaging().onNotificationOpenedApp(
-      async (remoteMessage) => {
-        log(
-          'App opened from background via notification:',
-          remoteMessage.messageId
-        );
-        await NotifySphere.callbackOnpress(
-          remoteMessage as FirebaseRemoteMessage,
-          'opened'
-        );
-      }
-    );
+    const title = msg.data?.title || msg.notification?.title || 'Notification';
+    const body  = msg.data?.body  || msg.notification?.body  || '';
+    const image =
+      msg.data?.imageUrl ||
+      msg.notification?.android?.imageUrl ||
+      msg.notification?.imageUrl ||
+      undefined;
 
-    // App launched from a quit state via notification tap
-    messaging()
-      .getInitialNotification()
-      .then((remoteMessage) => {
-        if (remoteMessage) {
-          NotifySphere.callbackOnpress(
-            remoteMessage as FirebaseRemoteMessage,
-            'initial'
-          );
-        }
-      })
-      .catch((err) => logError('getInitialNotification error:', err));
+    try {
+      // ✅ Channel ensure karo pehle
+      await NotifySphere.ensureChannel(
+        'channel_default',
+        'Default Channel',
+        'default',
+      );
 
-    // Notifee foreground press events (covers in-app notification taps)
-    const unsubForeground = notifee.onForegroundEvent(({ type, detail }) => {
-      if (type === EventType.PRESS && detail.notification) {
+       console.log('📢 notifee display calling...');
+
+      await notifee.displayNotification({
+        title,
+        body,
+        android: {
+          channelId: 'channel_default',
+          importance: AndroidImportance.HIGH,
+          pressAction: {id: 'default'},
+          sound: 'default',
+         smallIcon: 'ic_launcher',
+          visibility: AndroidVisibility.PUBLIC,
+          ...(image
+            ? {
+                style: {
+                  type: AndroidStyle.BIGPICTURE,
+                  picture: image,
+                },
+              }
+            : body.length > 44
+            ? {
+                style: {
+                  type: AndroidStyle.BIGTEXT,
+                  text: body,
+                },
+              }
+            : {}),
+        },
+        ios: {
+          sound: 'default',
+          foregroundPresentationOptions: {
+            alert: true,
+            badge: true,
+            sound: true,
+          },
+          ...(image ? {attachments: [{url: image}]} : {}),
+        },
+        data: msg.data,
+      });
+
+          console.log('✅ notifee display SUCCESS:', );
+      console.log('✅ Foreground notification displayed successfully');
+    } catch (err) {
+      logError('❌ Foreground display error:', err);
+    }
+
+    // Delivery receipt + callback
+    await NotifySphere.callbackOnDelivery(msg);
+    NotifySphere.sendCallback(msg, 'received');
+  });
+
+  // App background se open via notification tap
+  const unsubOpened = messaging().onNotificationOpenedApp(
+    async (remoteMessage) => {
+      log('App opened from background via notification:', remoteMessage.messageId);
+      await NotifySphere.callbackOnpress(
+        remoteMessage as FirebaseRemoteMessage,
+        'opened',
+      );
+    },
+  );
+
+  // App terminated state se open via notification tap
+  messaging()
+    .getInitialNotification()
+    .then(remoteMessage => {
+      if (remoteMessage) {
         NotifySphere.callbackOnpress(
-          detail.notification as NotifeeNotification,
-          'opened'
+          remoteMessage as FirebaseRemoteMessage,
+          'initial',
         );
       }
-    });
+    })
+    .catch(err => logError('getInitialNotification error:', err));
 
-    NotifySphere.unsubscribers.push(
-      unsubMessage,
-      unsubOpened,
-      unsubForeground
-    );
-  }
+  // Notifee foreground press events
+  const unsubForeground = notifee.onForegroundEvent(({type, detail}) => {
+    if (type === EventType.PRESS && detail.notification) {
+      NotifySphere.callbackOnpress(
+        detail.notification as NotifeeNotification,
+        'opened',
+      );
+    }
+  });
+
+  // ✅ Teeno unsubscribers push karo
+  NotifySphere.unsubscribers.push(
+    unsubMessage,
+    unsubOpened,
+    unsubForeground,
+  );
+}
 
   // ─── Private: backend channel helpers ────────────────────────────────────
 
@@ -851,31 +1028,34 @@ class NotifySphere {
     channels: BackendChannelConfig[]
   ): Promise<void> {
     for (const ch of channels) {
-      // sound === 'Custom'  → use soundDetail as the raw resource name
-      // sound === 'None'    → no sound (don't spread sound key)
-      // sound === 'Default' → omit key so Android uses system default
-      let soundValue: string | undefined;
+      // Map backend sound configuration to a Notifee-compatible value.
+      // ALWAYS pass an explicit sound — Android channels are immutable after
+      // creation, so omitting the field can leave the channel permanently
+      // silent if anything (e.g. FCM auto-create on an older app version)
+      // got there first.
+      //
+      //   'Custom' + soundDetail → raw resource name (extension stripped)
+      //   'None'                 → '' (empty string = silent in Notifee)
+      //   'Default' / anything   → 'default' (system default notification sound)
+      let soundValue: string;
       if (ch.sound === 'Custom' && ch.soundDetail) {
-        soundValue = ch.soundDetail.replace(/\..+$/, ''); // strip extension
+        soundValue = ch.soundDetail.replace(/\..+$/, '');
+      } else if (ch.sound === 'None') {
+        soundValue = '';
+      } else {
+        soundValue = 'default';
       }
-      // 'None' and 'Default' intentionally leave soundValue as undefined
-
-      console.log('this is sound value',soundValue)
 
       const channelDef: AndroidChannel = {
         id:         ch.channel_id,
         name:       ch.name,
         importance: NotifySphere.mapImportance(ch.Importance),
+        sound:      soundValue,
         lights:     (ch.LED ?? 0) === 1,
         vibration:  (ch.vibration ?? 0) === 1,
         visibility: NotifySphere.mapVisibility(ch.lockScreen),
         ...(ch.description ? { description: ch.description } : {}),
         ...(ch.led_color   ? { lightColor:  ch.led_color }   : {}),
-        // Only spread sound when it is a real custom resource name.
-        // For 'Default', omitting the key tells Android to use the system
-        // default sound. For 'None', omitting it silences the channel only
-        // if importance is set to LOW/MIN — HIGH importance always plays sound.
-        ...(soundValue     ? { sound: soundValue }           : {}),
       };
 
       await notifee.createChannel(channelDef);
@@ -892,37 +1072,45 @@ class NotifySphere {
    * prevents redundant async calls within the same session.
    * No-op on iOS — channels are an Android-only concept.
    */
-  private static async ensureChannel(
-    id: string,
-    name: string,
-    sound: string
-  ): Promise<void> {
-    if (Platform.OS !== 'android') return;
-    if (NotifySphere.createdChannels.has(id)) return;
+private static async ensureChannel(
+  id: string,
+  name: string,
+  sound: string
+): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  if (NotifySphere.createdChannels.has(id)) return;
 
-    const soundName = sound.replace(/\..+$/, '');
-    const channelDef: AndroidChannel = {
-      id,
-      name,
-      importance: AndroidImportance.HIGH,
-      // For custom sounds, use the raw resource name (without extension).
-      // For 'default', omit the field entirely so Android uses the device's
-      // default notification sound. Setting it to undefined explicitly can
-      // be treated as "no sound" by Notifee on some devices.
-      ...(soundName !== 'default' ? { sound: soundName } : {}),
-      lights: true,
-      lightColor: '#0000FF',
-      vibration: true,
-    };
+  const soundName = sound.replace(/\..+$/, '');
 
-    await notifee.createChannel(channelDef);
-    NotifySphere.createdChannels.add(id);
-    log('Android channel created/verified:', id);
-  }
+  const channelDef: AndroidChannel = {
+    id,
+    name,
+    importance: AndroidImportance.HIGH,
+    sound: soundName, // ✅ 'default' bhi explicitly set karo
+    lights: true,
+    lightColor: '#0000FF',
+    vibration: true,
+    visibility: AndroidVisibility.PUBLIC, // ✅ lock screen pe bhi dikhe
+  };
+
+  await notifee.createChannel(channelDef);
+  NotifySphere.createdChannels.add(id);
+  log('Android channel created/verified:', id);
+}
 
   // ─── Private: display notification ───────────────────────────────────────
 
-  private static async displayLocalNotification(
+  /**
+   * Builds and posts a notification via Notifee from a Firebase remote message.
+   *
+   * Not currently called by the SDK itself — `setBackgroundMessageHandler` no
+   * longer renders notifications (the OS auto-displays them when the FCM
+   * payload has a `notification` field, which is the common case). Kept on
+   * the public surface so consumers who use data-only FCM payloads can call
+   * it from their own `notifee.onBackgroundEvent` if they need JS-driven
+   * display in background/terminated state.
+   */
+  static async displayLocalNotification(
     remoteMessage: FirebaseRemoteMessage
   ): Promise<void> {
     // Use || so empty strings fall back just like null/undefined
@@ -955,10 +1143,10 @@ class NotifySphere {
       // Add a drawable with this name to your app's res/drawable folder.
       const smallIconResolved =
         NotifySphere.resolveIcon(remoteMessage.data?.smallIcon) ??
-        'ic_stat_notifysphere_default';
+        'ic_launcher';
       const largeIconResolved =
         NotifySphere.resolveIcon(remoteMessage.data?.largeIcon) ??
-        'ic_stat_notifysphere_default';
+        'ic_launcher';
 
       // Determine Android expand style:
       //  - Image present → BIGPICTURE (shows image when expanded)
@@ -978,6 +1166,9 @@ class NotifySphere {
           smallIcon: smallIconResolved,
           largeIcon: largeIconResolved,
           style: androidStyle,
+             pressAction: { id: 'default' },
+      importance: AndroidImportance.HIGH,
+      sound: soundName, // ✅ notification level pe bhi sound set karo
         },
         data: remoteMessage.data,
       });

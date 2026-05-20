@@ -6,7 +6,7 @@ import NotifySphere from 'react-native-notify-sphere';
 // export const API_TOKEN = 'ns_sk_lskqj4XRX0GR77AsN_DMrVxhr5bwvetRwSuSafVn5UI'; // Replace with your app's Bearer token
 
 
-const APP_ID = 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba';
+export const APP_ID = 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba';
 export const API_TOKEN = 'ns_sk_-JlEDcpsNvEsgWAdGWeAnWpB2eEPobJO1Pc35DmsQcE'; // Replace with your app's Bearer token
 
 

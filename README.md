@@ -12,10 +12,11 @@ A React Native push notification SDK built on Firebase Cloud Messaging (FCM) and
 4. [Android Setup](#android-setup)
 5. [iOS Setup](#ios-setup)
 6. [Usage](#usage)
-7. [API Reference](#api-reference)
-8. [FCM Payload Format](#fcm-payload-format)
-9. [Troubleshooting](#troubleshooting)
-10. [Version History](#version-history)
+7. [Upgrading from earlier versions](#upgrading-from-earlier-versions)
+8. [API Reference](#api-reference)
+9. [FCM Payload Format](#fcm-payload-format)
+10. [Troubleshooting](#troubleshooting)
+11. [Version History](#version-history)
 
 ---
 
@@ -179,38 +180,46 @@ You need two things from your NotifySphere dashboard before you start:
 
 ### `index.js` — register the background handler
 
-This **must** be called before `AppRegistry.registerComponent()` so the handler is in place when the app is woken from a terminated state to handle a background notification.
+> ⚠️ **Critical:** `setBackgroundHandler()` MUST be called **synchronously at the top of `index.js`**, before `AppRegistry.registerComponent()`. Do **not** wrap it in `AsyncStorage.getItem().then(...)`, `setTimeout`, `Promise.then(...)`, or any other async callback. Firebase requires the background handler to be registered at module-evaluation time — otherwise notifications delivered while the app is in the background or killed will be dropped because no handler exists yet when the headless JS task starts.
+
+Pass `appId` and `apiKey` here so the SDK can build the delivery URL and authenticate the receipt even when the app is launched from a killed state (in that case `initialize()` from `App.tsx` hasn't run yet). The `subscription_id` is loaded automatically from AsyncStorage inside the handler — you don't need to pass it.
 
 ```js
 import { AppRegistry } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import App from './src/App';
 import { name as appName } from './app.json';
 import NotifySphere from 'react-native-notify-sphere';
-import { API_TOKEN } from './src/App';
+import { APP_ID, API_TOKEN } from './src/App';
 
-const STORAGE_KEY = '@notifysphere_subscription_id';
-
-// Load the persisted subscription_id so delivery receipts include it
-// even when the app starts from a terminated state.
-AsyncStorage.getItem(STORAGE_KEY).then((subscriptionId) => {
-  NotifySphere.setBackgroundHandler({
-    apiKey: API_TOKEN,
-    subscriptionId: subscriptionId ?? undefined,
-  });
+// ✅ Synchronous and at the top — before AppRegistry.registerComponent.
+NotifySphere.setBackgroundHandler({
+  appId: APP_ID,
+  apiKey: API_TOKEN,
 });
 
 AppRegistry.registerComponent(appName, () => App);
 ```
 
+❌ **Do NOT do this** — it breaks background and terminated-state delivery receipts because the handler isn't registered when the message arrives:
+
+```js
+// ❌ BROKEN — handler is registered asynchronously, too late for FCM
+AsyncStorage.getItem(STORAGE_KEY).then((subscriptionId) => {
+  NotifySphere.setBackgroundHandler({ apiKey: API_TOKEN, subscriptionId });
+});
+AppRegistry.registerComponent(appName, () => App);
+```
+
 ### `App.tsx` — initialize and listen
+
+> Export `APP_ID` and `API_TOKEN` from this file so `index.js` can import them for `setBackgroundHandler()`. Keep them in one place — it prevents drift between the two entry points.
 
 ```tsx
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import NotifySphere from 'react-native-notify-sphere';
 
-const APP_ID = 'your-notifysphere-app-id';
+export const APP_ID = 'your-notifysphere-app-id';
 export const API_TOKEN = 'your-api-token'; // Get this from your NotifySphere dashboard
 const PUSH_TYPE = Platform.OS === 'android' ? 'AndroidPush' : 'IOSPush';
 
@@ -273,6 +282,81 @@ export default function App() {
 
 ---
 
+## Upgrading from earlier versions
+
+> ⚠️ **`npm update` alone is NOT enough.** You must also edit two files in your own app: `index.js` and `App.tsx`. The npm package only ships the SDK source — it cannot modify your application's entry point.
+
+### Why you have to edit `index.js` manually
+
+`index.js` lives in your app's project root, not inside the npm package. `npm install` only writes to `node_modules/react-native-notify-sphere/`:
+
+```
+your-app/
+├── index.js                              ← YOUR file. npm never touches this.
+├── src/App.tsx                           ← YOUR file. npm never touches this.
+└── node_modules/
+    └── react-native-notify-sphere/
+        └── lib/...                       ← only this gets updated by npm
+```
+
+The `example/index.js` you see in this repo is reference documentation — your actual `index.js` is a copy you maintain in your own app.
+
+### Migrating to v1.2.3+
+
+If you're upgrading from v1.2.0 / v1.2.1 / v1.2.2, do this:
+
+**Step 1 — `npm install react-native-notify-sphere@latest`**
+
+**Step 2 — Edit your `index.js`.** Remove any async wrapping (`AsyncStorage.getItem().then(...)`, `setTimeout`, etc.) around `setBackgroundHandler()`, and add `appId` to the config:
+
+```diff
+  import { AppRegistry } from 'react-native';
+- import AsyncStorage from '@react-native-async-storage/async-storage';
+  import App from './src/App';
+  import { name as appName } from './app.json';
+  import NotifySphere from 'react-native-notify-sphere';
+- import { API_TOKEN } from './src/App';
++ import { APP_ID, API_TOKEN } from './src/App';
+
+- const STORAGE_KEY = '@notifysphere_subscription_id';
+-
+- AsyncStorage.getItem(STORAGE_KEY).then((subscriptionId) => {
+-   NotifySphere.setBackgroundHandler({
+-     apiKey: API_TOKEN,
+-     subscriptionId: subscriptionId ?? undefined,
+-   });
+- });
++ // Must be synchronous and at the top — before AppRegistry.registerComponent.
++ NotifySphere.setBackgroundHandler({
++   appId: APP_ID,
++   apiKey: API_TOKEN,
++ });
+
+  AppRegistry.registerComponent(appName, () => App);
+```
+
+**Step 3 — Edit your `App.tsx`.** Export `APP_ID` so `index.js` can import it (you were probably already exporting `API_TOKEN`):
+
+```diff
+- const APP_ID = 'your-notifysphere-app-id';
++ export const APP_ID = 'your-notifysphere-app-id';
+  export const API_TOKEN = 'your-api-token';
+```
+
+**Step 4 — Verify your backend sends data-only FCM payloads.** This was already required, but it's the #1 cause of "delivery receipt works in foreground only." See [FCM Payload Format](#fcm-payload-format).
+
+### Why both `index.js` and the FCM payload matter
+
+| Where the bug is | What goes wrong | Symptom |
+|---|---|---|
+| `setBackgroundHandler()` wrapped in `.then()` | Firebase requires synchronous handler registration. The async callback resolves *after* the headless JS task already started, so the handler is missing when FCM tries to deliver. | Receipt fails in **killed** state |
+| Missing `appId` in `setBackgroundHandler()` | The SDK can't compute the delivery URL without it (because `initialize()` hasn't run yet in killed state). `axios.post('', ...)` fails silently. | Receipt fails in **killed** state |
+| FCM payload contains top-level `notification` block | Android FCM auto-displays the notification in the system tray and never wakes JS. | Receipt fails in **background** and **killed** states |
+
+All three need to be correct for the delivery confirmation API to fire in every app state.
+
+---
+
 ## API Reference
 
 ### `NotifySphere.initialize(config)`
@@ -304,15 +388,18 @@ Initialises the SDK, registers the device with the NotifySphere server, and sets
 
 ### `NotifySphere.setBackgroundHandler(config?)`
 
-Registers Firebase and Notifee background/terminated-state handlers. **Must be called in `index.js`** before `AppRegistry.registerComponent()`.
+Registers Firebase and Notifee background/terminated-state handlers. **Must be called synchronously in `index.js`** before `AppRegistry.registerComponent()` — see the warning in the [Usage](#indexjs--register-the-background-handler) section.
 
-When the app is **terminated**, `initialize()` never runs, so any config you passed there is not available. Pass `apiKey` and `subscriptionId` here directly so delivery receipts still work.
+When the app is **terminated**, `initialize()` never runs, so any config you passed there is not available. Pass `appId` and `apiKey` here so the SDK can derive the default `deliveryUrl` (`${baseUrl}${appId}/delivery/confirm`) and authenticate the receipt. The `subscription_id` is read from AsyncStorage inside the handler automatically — passing it explicitly is optional.
 
 | Field | Type | Description |
 |---|---|---|
-| `apiKey` | `string` | Bearer token — required for authenticated delivery receipts in terminated state |
-| `subscriptionId` | `string` | Persisted subscription ID — include it so receipts are linked to the correct device |
-| `deliveryUrl` | `string` | Override the delivery URL for terminated state (optional) |
+| `appId` | `string` | Your NotifySphere App ID — used to derive the default `deliveryUrl` when the app starts from a killed state (highly recommended) |
+| `apiKey` | `string` | Bearer token — required for authenticated delivery receipts in background/terminated state |
+| `baseUrl` | `string` | Override the API base URL (optional, defaults to the hosted service) |
+| `deliveryUrl` | `string` | Override the full delivery-confirmation URL (optional — only needed if your endpoint doesn't follow the default `{baseUrl}{appId}/delivery/confirm` pattern) |
+| `subscriptionId` | `string` | Persisted subscription ID (optional — automatically loaded from AsyncStorage inside the handler if omitted) |
+| `debug` | `boolean` | Enable verbose `[NotifySphere]` logs in the background/terminated context (default: `false`) |
 
 ---
 
@@ -375,24 +462,36 @@ Requests notification permission from the OS and returns `true` if granted. Call
 
 ## FCM Payload Format
 
-NotifySphere expects **data-only** FCM messages (no `notification` field). This is required for delivery confirmation to work in the terminated state.
+NotifySphere expects **mixed payloads** in production — i.e. send both a top-level `notification` field (for OS auto-display) AND a `data` field (for delivery tracking and routing). The SDK delegates background/terminated display to the OS and uses the JS background handler only to fire the delivery-confirmation API.
 
 ```json
 {
   "to": "<device-fcm-token>",
-  "data": {
+  "notification": {
     "title": "Hello!",
-    "body": "You have a new message.",
+    "body": "You have a new message."
+  },
+  "data": {
     "notification_id": "uuid-here",
     "sound": "default",
     "imageUrl": "https://example.com/image.jpg",
     "smallIcon": "ic_stat_onesignal_default",
-    "redirect_action": "home"
+    "redirect_action": "home",
+    "channelId": "channel_default"
+  },
+  "android": {
+    "priority": "high"
   }
 }
 ```
 
-> **Why data-only?** If a `notification` field is present in the FCM payload, the OS handles display silently — your JavaScript never runs and delivery receipts cannot fire in the terminated state.
+> **Why both `notification` and `data`?**
+> - The `notification` block lets the OS auto-display the push in background/terminated state with sound, channel, and icon set up automatically — no JS bundle has to load to show it. This is what makes notifications reliable when the app is killed.
+> - The `data` block carries routing/tracking metadata (`notification_id`, `redirect_action`, etc.) that fires the JS background handler so the SDK can POST to the delivery-confirmation endpoint.
+>
+> **Don't worry about duplicates.** Since v1.2.5 the SDK no longer renders notifications from its background handler — display is delegated entirely to the OS. The handler only fires the delivery API. So you will never see two notifications for one push.
+>
+> **Foreground behavior** is unchanged — the SDK draws notifications via Notifee when the app is in the foreground, since FCM doesn't auto-display there.
 
 ### Supported `data` fields
 
@@ -418,9 +517,37 @@ Make sure you are passing `apiKey` in both `initialize()` and `setBackgroundHand
 
 Check that `ic_stat_onesignal_default.png` exists at `android/app/src/main/res/drawable/`. Android silently drops notifications with a missing or invalid small icon.
 
-### Delivery receipt not firing in terminated state
+### Delivery receipt fires in foreground but NOT in background or terminated state
 
-Make sure you are sending a **data-only** FCM message (no `notification` field in the payload). Also confirm that `setBackgroundHandler()` is called in `index.js` before `AppRegistry.registerComponent()`, and that you are passing both `apiKey` and `subscriptionId` to it.
+This is the most common integration bug. There are two independent causes — check both:
+
+**1. Your FCM payload is not data-only.**
+
+Android FCM only invokes your JS background handler for **data-only messages** (no `notification` field at the top level). If your payload looks like this — it's broken:
+
+```json
+{
+  "to": "...",
+  "notification": { "title": "Hi", "body": "Hello" },   ← REMOVE this block
+  "data": { "notification_id": "..." }
+}
+```
+
+Move `title` and `body` into `data` and remove the top-level `notification` block. See [FCM Payload Format](#fcm-payload-format) for the correct shape.
+
+**2. `setBackgroundHandler()` is registered asynchronously.**
+
+If your `index.js` wraps `setBackgroundHandler()` inside `AsyncStorage.getItem().then(...)`, `setTimeout`, a `Promise.then(...)`, or any async callback, the handler is registered *after* `AppRegistry.registerComponent()` runs. When FCM delivers a message to a killed app, no handler exists yet and the message is dropped. Move the call to the top of `index.js`:
+
+```js
+// ✅ Correct
+NotifySphere.setBackgroundHandler({ appId: APP_ID, apiKey: API_TOKEN });
+AppRegistry.registerComponent(appName, () => App);
+```
+
+**3. Quick diagnostic.**
+
+Run `adb logcat | grep NotifySphere` while triggering a background notification. The SDK logs `[NotifySphere] background handler fired...` at the top of the handler. If you see this line but the receipt POST never goes out, check your `apiKey` and network. If you don't see it at all, the FCM payload is the cause (#1 above) — the OS swallowed the message and JS never ran.
 
 ### `async-storage` build error
 
@@ -441,6 +568,30 @@ await NotifySphere.initialize({ ..., debug: __DEV__ });
 ---
 
 ## Version History
+
+### v1.2.6 (May 2026)
+
+- **Fix: duplicate / blank notifications in background and terminated state** — the JS background handler no longer renders notifications via Notifee at all. Display in background / terminated state is now delegated entirely to FCM (Android) / APNs (iOS), which auto-render notifications whenever the payload includes a top-level `notification` block. The handler is now single-purpose: fire the delivery-confirmation API. Previously, even with payload-shape checks, edge cases (e.g. `notification: { imageUrl: ... }` with no title/body, or backends sending both fields) caused the OS and Notifee to each post one notification — the user saw "one with the message, one blank". That category of bug is structurally impossible now.
+- **Payload format updated** — `README.md → FCM Payload Format` now documents **mixed payloads** (top-level `notification` + `data`) as the recommended shape. The earlier "data-only required" guidance has been dropped because the SDK no longer needs to draw the notification itself.
+- **`displayLocalNotification` is now public** — consumers who genuinely need data-only payloads (rare) can call `NotifySphere.displayLocalNotification(remoteMessage)` themselves from a `notifee.onBackgroundEvent` handler.
+- **Fix: no sound when no `channelId` is provided in the payload** — `channel_default` and channels created via `ensureChannel` were created without an explicit `sound` field. Android NotificationChannels are immutable after first creation, so if anything (e.g. the FCM library or a previous app version) created the channel silently first, every push to that channel stayed silent forever. The SDK now sets `sound: 'default'` explicitly so Notifee binds the channel to the system default ringtone.
+- **Fix: terminated-state notifications popping in and disappearing** — earlier development of v1.2.5 called `notifee.deleteChannel('channel_default')` inside `setBackgroundHandler` to migrate broken silent channels from v1.2.3 / v1.2.4. On Android, deleting a channel also cancels every active notification posted to it — so when FCM auto-displayed a notification in terminated state and our JS bundle then loaded and ran the migration a fraction of a second later, the notification was destroyed before the user could interact with it. The channel migration has been moved into `initialize()` (foreground-only, guarded by an AsyncStorage flag so it runs exactly once per install) and `setBackgroundHandler` now only calls the idempotent `notifee.createChannel`.
+- **One-time channel migration** — to undo the broken `channel_default` already on user devices from v1.2.3 / v1.2.4, `initialize()` runs a one-shot migration (delete + recreate the channel) the first time it executes on v1.2.5+, then sets `@notifysphere_channel_default_migrated_v1` in AsyncStorage so it never runs again. Users will hear the correct sound from the first push after the app is opened once on v1.2.5.
+- **Backend-configured channels** — `createChannelsFromConfig` now always passes an explicit `sound` value (`'default'`, `''` for None, or the custom filename) instead of omitting the field, for the same immutability reason as above.
+
+### v1.2.4 (May 2026)
+
+- **Hotfix: production API URL** — v1.2.3 was accidentally published with the staging URL (`apinotify.dothejob.in`) baked into the compiled `lib/`. v1.2.4 ships the correct production URL (`api.notifysphere.in`). All consumers on v1.2.3 must upgrade to v1.2.4 — no other code changes required.
+
+### v1.2.3 (May 2026)
+
+> ⚠️ **Do not use v1.2.3** — it shipped with the staging API URL. Upgrade directly to v1.2.4.
+>
+> 🛠️ **This release requires changes to your `index.js` and `App.tsx`. `npm update` alone is not enough.** See [Upgrading from earlier versions](#upgrading-from-earlier-versions) for the diff.
+
+- **Fix: background & terminated-state delivery confirmation regression** — `setBackgroundHandler()` no longer requires asynchronous setup in `index.js`. The SDK now reads the cached `subscription_id` from AsyncStorage *inside* the handler, so consumers can (and must) call `setBackgroundHandler()` synchronously at the top of `index.js`.
+- **`setBackgroundHandler({ appId, baseUrl })`** — new optional fields so the SDK can derive the default `deliveryUrl` when launched from a killed state (where `initialize()` hasn't run).
+- **Diagnostic log** — `setBackgroundMessageHandler` now logs `[NotifySphere] background handler fired...` on every invocation to make it easy to verify the handler is wired up correctly via `adb logcat`.
 
 ### v1.2.0 (March 2026)
 

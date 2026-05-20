@@ -1,6 +1,6 @@
 {
   "name": "react-native-notify-sphere",
-  "version": "1.2.2",
+  "version": "1.2.6",
   "description": "Notify sphere npm package",
   "main": "./lib/module/index",
   "types": "lib/typescript/src/index.d.ts",
