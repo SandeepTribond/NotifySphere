@@ -2,6 +2,8 @@
 
 A React Native push notification SDK built on Firebase Cloud Messaging (FCM) and Notifee. Handles delivery tracking, press tracking, user segmentation via tags, and rich notifications — with full Android and iOS support.
 
+This SDK is part of [NotifySphere](https://notifysphere.net) — a unified engagement platform combining push notifications, WhatsApp Business API messaging, in-app support, and mobile attribution (OneLink deep linking) in one dashboard.
+
 ---
 
 ## Table of Contents
@@ -28,6 +30,7 @@ A React Native push notification SDK built on Firebase Cloud Messaging (FCM) and
 - ✅ Smart re-registration — only calls the API when FCM token or user details change
 - ✅ Automatic FCM token refresh handling
 - ✅ User segmentation via custom tags
+- ✅ Campaign event tracking — attribute conversions (bookings, purchases, sign-ups) back to a campaign
 - ✅ Rich notifications — images, custom sounds, action buttons
 - ✅ Bearer token authentication on all API calls
 - ✅ Full TypeScript support
@@ -441,6 +444,38 @@ await NotifySphere.updateTags({
 | `type` | `string` | ✅ | `'AndroidPush'` or `'IOSPush'` |
 | `tags` | `Record<string, string>` | ✅ | Tags to update |
 | `appId` | `string` | | Defaults to the `appId` passed in `initialize()` |
+
+---
+
+### `NotifySphere.postEvent(params)`
+
+Posts a campaign conversion event to the NotifySphere platform. Use this to attribute in-app actions (bookings, purchases, sign-ups, etc.) back to the campaign that drove the user to your app.
+
+The `subscription_id` is read automatically from the value stored by `initialize()`. `ns_click` is optional — pass it when it is available from a campaign deep-link. The optional `data` object carries arbitrary event metadata such as revenue, quantity, or order IDs.
+
+```ts
+await NotifySphere.postEvent({
+  event: 'booking',
+  nsClick: 'abc123',          // optional — from deep-link query param ns_click
+  data: {                     // optional — event-specific metadata
+    revenue: 2500,
+    quantity: 2,
+    tax: 450,
+    order_id: 'ORD123',
+  },
+});
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `event` | `string` | ✅ | Event name, e.g. `'booking'`, `'purchase'`, `'signup'` |
+| `nsClick` | `string` | | Attribution token from the campaign deep-link (`ns_click` query param) |
+| `data` | `Record<string, unknown>` | | Arbitrary event metadata (revenue, quantity, order IDs, etc.) |
+| `appId` | `string` | | Defaults to the `appId` passed in `initialize()` |
+
+**Returns:** `Promise<unknown>` — the server response body, or `null` on error.
+
+> **Note:** `initialize()` must have been called at least once before `postEvent()` so that the SDK has a `subscription_id` to include in the request.
 
 ---
 

@@ -1,7 +1,7 @@
 {
   "name": "react-native-notify-sphere",
-  "version": "1.2.6",
-  "description": "Notify sphere npm package",
+  "version": "1.2.7",
+  "description": "Official React Native SDK for NotifySphere — push notifications, WhatsApp Business API, in-app support & mobile attribution. See https://notifysphere.net",
   "main": "./lib/module/index",
   "types": "lib/typescript/src/index.d.ts",
   "react-native": "src/index",
@@ -48,7 +48,7 @@
   "bugs": {
     "url": "https://github.com/SandeepTribond/NotifySphere.git/issues"
   },
-  "homepage": "https://github.com/SandeepTribond/NotifySphere.git#readme",
+  "homepage": "https://notifysphere.net",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },
@@ -79,6 +79,7 @@
     "react-native": "0.81.1",
     "react-native-builder-bob": "^0.40.13",
     "react-native-device-info": "^15.0.1",
+    "react-native-install-referrer": "^1.0.1",
     "release-it": "^19.0.4",
     "turbo": "^2.5.6",
     "typescript": "^5.9.2"
@@ -93,7 +94,8 @@
     "@react-native-firebase/messaging": "^22.2.1",
     "react": "*",
     "react-native": "*",
-    "react-native-device-info": ">=10.0.0"
+    "react-native-device-info": ">=10.0.0",
+    "react-native-install-referrer": ">=1.0.0"
   },
   "workspaces": [
     "example"

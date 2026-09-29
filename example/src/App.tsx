@@ -2,12 +2,12 @@ import { useEffect } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import NotifySphere from 'react-native-notify-sphere';
 
-// const APP_ID = 'b9f4dee6-90bf-a73b-057a-a7091a0a9048';
-// export const API_TOKEN = 'ns_sk_lskqj4XRX0GR77AsN_DMrVxhr5bwvetRwSuSafVn5UI'; // Replace with your app's Bearer token
+const APP_ID = 'b9f4dee6-90bf-a73b-057a-a7091a0a9048';
+export const API_TOKEN = 'ns_sk_lskqj4XRX0GR77AsN_DMrVxhr5bwvetRwSuSafVn5UI'; // Replace with your app's Bearer token
 
 
-export const APP_ID = 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba';
-export const API_TOKEN = 'ns_sk_-JlEDcpsNvEsgWAdGWeAnWpB2eEPobJO1Pc35DmsQcE'; // Replace with your app's Bearer token
+// export const APP_ID = 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba';
+// export const API_TOKEN = 'ns_sk_-JlEDcpsNvEsgWAdGWeAnWpB2eEPobJO1Pc35DmsQcE'; // Replace with your app's Bearer token
 
 
 
@@ -47,6 +47,29 @@ export default function App() {
           age: '33',
         },
       });
+
+      
+      // Example: post a campaign conversion event.
+      // In a real app, call this after the user completes the target action
+      // (e.g. booking confirmation). Pass `nsClick` when it is available from
+      // the campaign deep-link (the `ns_click` query param in the incoming URL).
+      const eventResult = await NotifySphere.postEvent({
+        event: 'booking',
+        appId: APP_ID,
+        nsClick: '7b789ef3-8cf9-4caa-b796-e98a6f1ed5d8', // replace with real value from deep-link
+        data: {
+          revenue: 2350,
+          quantity: 2,
+          tax: 450,
+          order_id: 'ORD23',
+        },
+      });
+
+
+
+      if (__DEV__) {
+        console.log('NotifySphere postEvent result:', eventResult);
+      }
     };
 
     init();

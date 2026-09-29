@@ -1,11 +1,13 @@
 import messaging from '@react-native-firebase/messaging';
 import DeviceInfo from 'react-native-device-info';
+import RNInstallReferrer from 'react-native-install-referrer';
 import notifee, {
   AndroidImportance,
   AndroidVisibility,
   AndroidStyle,
   EventType,
   type AndroidChannel,
+  
 } from '@notifee/react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -26,7 +28,11 @@ export interface FirebaseRemoteMessage {
     title?: string;
     body?: string;
     android?: { imageUrl?: string };
-    ios?: { attachments?: Array<{ url?: string }> };
+    ios?: {
+      attachments?: Array<{ url?: string }>;
+      /** Sound name or critical-sound config — populated by RNFB on iOS */
+      sound?: string | { name?: string; critical?: boolean; volume?: number };
+    };
     imageUrl?: string;
   };
   data?: Record<string, string>;
@@ -163,7 +169,8 @@ interface DeviceInfoResult {
 // Production NotifySphere API. Do NOT switch this to a staging URL before
 // running `yarn prepare` / `npm publish` — the value is compiled into `lib/`
 // and ships to every consumer.
-const DEFAULT_BASE_URL = 'https://api.notifysphere.in/client/';
+const DEFAULT_BASE_URL = 'https://api.notifysphere.in/client/';   /// Live url
+// const DEFAULT_BASE_URL = 'https://apinotify.dothejob.in/client';  /// staging url
 
 // ─── NotifySphere class ───────────────────────────────────────────────────────
 
@@ -263,11 +270,46 @@ class NotifySphere {
   // ─── Permissions ─────────────────────────────────────────────────────────
 
   static async checkApplicationPermission(): Promise<boolean> {
+      console.log('🔥 checkApplicationPermission START');
     try {
-      if (Platform.OS === 'android' && Platform.Version >= 33) {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-        );
+          console.log('🔥 Platform:', Platform.OS);
+    console.log('🔥 Platform Version:', Platform.Version);
+     
+    if (Platform.OS === 'android' && Platform.Version >= 33) {
+          // const granted = await PermissionsAndroid.request(
+        //   PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        // );
+     const alreadyGranted = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+      );
+       console.log('🔐 Notification permission already granted:', alreadyGranted);
+
+  if (alreadyGranted) {
+        return true;
+      }
+
+         console.log('🔥 BEFORE PermissionsAndroid.request');
+
+            const requestPromise = PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+      );
+
+
+        const timeoutPromise = new Promise<string>((resolve) => {
+        setTimeout(() => {
+          console.log('⏰ Permission request timeout');
+          resolve(PermissionsAndroid.RESULTS.DENIED);
+        }, 10000);
+      });
+
+      const granted = await Promise.race([
+        requestPromise,
+        timeoutPromise,
+      ]);
+
+
+
+         console.log('🔥 AFTER PermissionsAndroid.request:', granted);
         return granted === PermissionsAndroid.RESULTS.GRANTED;
       } else if (Platform.OS === 'ios') {
         const authStatus = await messaging().requestPermission();
@@ -276,8 +318,11 @@ class NotifySphere {
           authStatus === messaging.AuthorizationStatus.PROVISIONAL
         );
       }
+
+        console.log('🔥 Permission request skipped');
       return true;
     } catch (err) {
+       console.log('🔥 Permission ERROR:', err);
       logError('Error requesting notification permission:', err);
       return false;
     }
@@ -372,6 +417,10 @@ class NotifySphere {
     }
   }
 
+
+
+  
+
   // ─── Initialize ──────────────────────────────────────────────────────────
 
   /**
@@ -384,128 +433,228 @@ class NotifySphere {
    *
    * Token changes are also handled automatically via `onTokenRefresh`.
    */
-  static async initialize(
-    config: InitializeConfig
-  ): Promise<string | undefined> {
-    _debug = config.debug ?? false;
-    NotifySphere.appId = config.appId;
-    NotifySphere.baseUrl = NotifySphere.enforceHttps(config.baseUrl ?? DEFAULT_BASE_URL, true);
-    NotifySphere.trackingUrl = NotifySphere.enforceHttps(
-      config.trackingUrl ?? `${NotifySphere.baseUrl}${config.appId}/onpress/handle`
-    );
-    NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
-      config.deliveryUrl ?? `${NotifySphere.baseUrl}${config.appId}/delivery/confirm`
-    );
-    NotifySphere.apiKey = config.apiKey ?? null;
+ static async initialize(
+  config: InitializeConfig
+): Promise<string | undefined> {
+  _debug = config.debug ?? false;
+  NotifySphere.appId = config.appId;
+  NotifySphere.baseUrl = NotifySphere.enforceHttps(config.baseUrl ?? DEFAULT_BASE_URL, true);
+  NotifySphere.trackingUrl = NotifySphere.enforceHttps(
+    config.trackingUrl ?? `${NotifySphere.baseUrl}${config.appId}/onpress/handle`
+  );
+  NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
+    config.deliveryUrl ?? `${NotifySphere.baseUrl}${config.appId}/delivery/confirm`
+  );
+  NotifySphere.apiKey = config.apiKey ?? null;
+ 
+  // ── FIRST thing, before anything else runs — so we always have proof an
+  // attempt was made, even if a later step hangs forever and never reaches
+  // the catch block. Fire-and-forget (not awaited), same as before.
+  NotifySphere.postEvent({
+    event: 'initialize_start',
+    appId: config.appId,
+    data: { config },
+  });
 
-    const hasPermission = await NotifySphere.checkApplicationPermission();
-    if (!hasPermission) {
-      warn('Notification permission not granted — aborting initialization');
-      return undefined;
-    }
 
-    try {
-      // On iOS, ensure the device is registered with APNs before asking
-      // Firebase for an FCM token. Without this, getToken() throws
-      // "No APNS token specified" on the first launch.
-      if (Platform.OS === 'ios') {
-        await NotifySphere.registerForRemoteMessagesIfNeeded();
-      }
-
-      const fcmToken = await messaging().getToken();
-      NotifySphere.fcmToken = fcmToken;
-
-      // ── Restore cached subscription_id immediately so tracking calls
-      //    have it available even before the registration API responds.
-      const cachedSubId = await AsyncStorage.getItem(STORAGE_KEY_SUB_ID);
-      if (cachedSubId) {
-        NotifySphere.subscriptionId = cachedSubId;
-      }
-
-      // ── Only call the registration API when the FCM token OR any user
-      //    detail has changed. This avoids a redundant network call on every
-      //    app open while still syncing updates (email, phone, location, etc.)
-      const [cachedToken, cachedUserHash, cachedChannels] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEY_TOKEN),
-        AsyncStorage.getItem(STORAGE_KEY_USER_HASH),
-        AsyncStorage.getItem(STORAGE_KEY_CHANNELS),
-      ]);
-
-      // Re-create all backend-configured channels on every launch so they
-      // always exist before a background notification arrives — even after
-      // a reinstall or app-data clear. Notifee's createChannel is idempotent.
-      // Channels are Android-only; skip on iOS.
-      if (Platform.OS === 'android' && cachedChannels) {
-        const channels = JSON.parse(cachedChannels) as BackendChannelConfig[];
-        await NotifySphere.createChannelsFromConfig(channels);
-        log('Channels restored from cache:', channels.length);
-      }
-
-      const currentUserHash = NotifySphere.buildUserHash(config);
-      let subscriptionId: string | undefined = cachedSubId ?? undefined;
-
-      const tokenChanged = fcmToken !== cachedToken;
-      const userChanged = currentUserHash !== cachedUserHash;
-
-      if (tokenChanged || userChanged) {
-        if (tokenChanged) log('FCM token changed — re-registering device');
-        if (userChanged) log('User details changed — re-registering device');
-        subscriptionId = await NotifySphere.registerDevice(
-          config,
-          fcmToken,
-          currentUserHash
-        );
-      } else {
-        log('Token and user details unchanged — skipping registration API call');
-      }
-
-      // ── Android: ensure the default channel exists (idempotent)
-      if (Platform.OS === 'android') {
-        // One-time migration: pre-v1.2.5 builds created `channel_default`
-        // without an explicit `sound` field, which on some devices left the
-        // channel permanently silent (channels are immutable on Android). The
-        // first time we run on v1.2.5+, delete that legacy channel so the
-        // corrected definition (sound: 'default') can take effect. This is
-        // safe to do in `initialize()` because the app is in the foreground
-        // here — there are no active background notifications to accidentally
-        // cancel (unlike in `setBackgroundHandler`).
-        try {
-          const migrated = await AsyncStorage.getItem(
-            STORAGE_KEY_CHANNEL_MIGRATED
-          );
-          if (!migrated) {
-            await notifee.deleteChannel('channel_default').catch(() => {
-              /* didn't exist — fine */
-            });
-            await AsyncStorage.setItem(STORAGE_KEY_CHANNEL_MIGRATED, '1');
-            log('channel_default migrated (deleted) — will be recreated below');
+      // ── Timeout wrapper ─────────────────────────────────────────────────────────
+    // Wraps any promise with a hard timeout. If the underlying native call hangs
+    // (never resolves, never rejects — the actual cause of "neither initialize_start
+    // nor initialize_error fires"), this forces a rejection instead, so the outer
+    // catch block in initialize() always runs.
+    const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+      return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`NotifySphere: "${label}" timed out after ${ms}ms`));
+        }, ms);
+        promise.then(
+          (val) => {
+            clearTimeout(timer);
+            resolve(val);
+          },
+          (err) => {
+            clearTimeout(timer);
+            reject(err);
           }
-        } catch (err) {
-          warn('channel_default migration failed:', err);
-        }
-
-        await NotifySphere.ensureChannel(
-          'channel_default',
-          'Default Channel',
-          'default'
         );
-      }
-
-      if (!NotifySphere.initialized) {
-         console.log('🚀 setupListeners calling...');
-        NotifySphere.setupListeners();
-        // Watch for token refreshes (Firebase can rotate the token silently)
-        NotifySphere.watchTokenRefresh(config);
-        NotifySphere.initialized = true;
-         console.log('✅ setupListeners done');
-      }
-
-      return subscriptionId;
-    } catch (err) {
-      logError('Error during initialization:', err);
-      return undefined;
+      });
+    };
+ 
+  try {
+    const hasPermission = await withTimeout(
+      NotifySphere.checkApplicationPermission(),
+      12000,
+      'checkApplicationPermission'
+    );
+ 
+    // On iOS, ensure the device is registered with APNs before asking
+    // Firebase for an FCM token. Without this, getToken() throws
+    // "No APNS token specified" on the first launch.
+    if (Platform.OS === 'ios') {
+      await withTimeout(
+        NotifySphere.registerForRemoteMessagesIfNeeded(),
+        10000,
+        'registerForRemoteMessagesIfNeeded'
+      );
     }
+ 
+    // Most critical call in this method — known to hang indefinitely on
+    // devices with broken/outdated Play Services, with no native timeout.
+    const fcmToken = await withTimeout(
+      messaging().getToken(),
+      15000,
+      'messaging().getToken()'
+    );
+    NotifySphere.fcmToken = fcmToken ?? '';
+ 
+    // ── Midpoint checkpoint event — confirms permission check + FCM token
+    // both completed. If you see initialize_start but never this event,
+    // the hang is in permission-check/APNs/getToken. If you see this but
+    // never a success (and never initialize_error), the hang is later
+    // (registerDevice / channel setup / listener setup).
+    NotifySphere.postEvent({
+      event: 'initialize_token_acquired',
+      appId: config.appId,
+      data: {
+        hasPermission,
+        tokenPresent: !!fcmToken,
+      },
+    });
+ 
+    // ── Restore cached subscription_id immediately so tracking calls
+    //    have it available even before the registration API responds.
+    const cachedSubId = await AsyncStorage.getItem(STORAGE_KEY_SUB_ID);
+    if (cachedSubId) {
+      NotifySphere.subscriptionId = cachedSubId;
+    }
+ 
+    // ── Only call the registration API when the FCM token OR any user
+    //    detail has changed. This avoids a redundant network call on every
+    //    app open while still syncing updates (email, phone, location, etc.)
+    const [cachedToken, cachedUserHash, cachedChannels] = await Promise.all([
+      AsyncStorage.getItem(STORAGE_KEY_TOKEN),
+      AsyncStorage.getItem(STORAGE_KEY_USER_HASH),
+      AsyncStorage.getItem(STORAGE_KEY_CHANNELS),
+    ]);
+ 
+    // Re-create all backend-configured channels on every launch so they
+    // always exist before a background notification arrives — even after
+    // a reinstall or app-data clear. Notifee's createChannel is idempotent.
+    // Channels are Android-only; skip on iOS.
+    if (Platform.OS === 'android' && cachedChannels) {
+      const channels = JSON.parse(cachedChannels) as BackendChannelConfig[];
+      await withTimeout(
+        NotifySphere.createChannelsFromConfig(channels),
+        8000,
+        'createChannelsFromConfig'
+      );
+      log('Channels restored from cache:', channels.length);
+    }
+ 
+    const currentUserHash = NotifySphere.buildUserHash(config);
+    let subscriptionId: string | undefined = cachedSubId ?? undefined;
+ 
+    const tokenChanged = fcmToken !== cachedToken;
+    const userChanged = currentUserHash !== cachedUserHash;
+ 
+    // ── Extract install referrer attribution (Android only)
+    // Known to hang on devices without the Play Store installed (sideloaded
+    // APKs) — wrapped in both its own try/catch AND a timeout.
+    if (Platform.OS === 'android') {
+      try {
+        const referrerResult = await withTimeout(
+          RNInstallReferrer.getReferrer(),
+          5000,
+          'RNInstallReferrer.getReferrer'
+        );
+        const referrerString: string | null = referrerResult?.installReferrer ?? null;
+        if (referrerString) {
+          const params = new URLSearchParams(referrerString);
+          const nsClick = params.get('ns_click');
+          const cid = params.get('cid');
+          config = {
+            ...config,
+            tags: {
+              ...(config.tags ?? {}),
+              ...(nsClick ? { ns_click: nsClick } : {}),
+              ...(cid ? { cid } : {}),
+            },
+          };
+        }
+      } catch (e) {
+        log('Install referrer unavailable or timed out:', e);
+      }
+    }
+ 
+    if (tokenChanged || userChanged) {
+      if (tokenChanged) log('FCM token changed — re-registering device');
+      if (userChanged) log('User details changed — re-registering device');
+      // registerDevice's internal axios call already has a 10s timeout, but
+      // we wrap it too as a backstop in case that call is ever changed.
+      subscriptionId = await withTimeout(
+        NotifySphere.registerDevice(config, fcmToken, currentUserHash),
+        12000,
+        'registerDevice'
+      );
+    } else {
+      log('Token and user details unchanged — skipping registration API call');
+    }
+ 
+    // ── Android: ensure the default channel exists (idempotent)
+    if (Platform.OS === 'android') {
+      // One-time migration: pre-v1.2.5 builds created `channel_default`
+      // without an explicit `sound` field, which on some devices left the
+      // channel permanently silent (channels are immutable on Android). The
+      // first time we run on v1.2.5+, delete that legacy channel so the
+      // corrected definition (sound: 'default') can take effect.
+      try {
+        const migrated = await AsyncStorage.getItem(STORAGE_KEY_CHANNEL_MIGRATED);
+        if (!migrated) {
+          await withTimeout(
+            notifee.deleteChannel('channel_default').catch(() => {
+              /* didn't exist — fine */
+            }),
+            5000,
+            'deleteChannel(channel_default)'
+          );
+          await AsyncStorage.setItem(STORAGE_KEY_CHANNEL_MIGRATED, '1');
+          log('channel_default migrated (deleted) — will be recreated below');
+        }
+      } catch (err) {
+        warn('channel_default migration failed:', err);
+      }
+ 
+      await withTimeout(
+        NotifySphere.ensureChannel('channel_default', 'Default Channel', 'default'),
+        8000,
+        'ensureChannel'
+      );
+    }
+ 
+    if (!NotifySphere.initialized) {
+      NotifySphere.setupListeners();
+      // Watch for token refreshes (Firebase can rotate the token silently)
+      NotifySphere.watchTokenRefresh(config);
+      NotifySphere.initialized = true;
+    }
+ 
+    return subscriptionId;
+  } catch (err: any) {
+    NotifySphere.postEvent({
+      event: 'initialize_error',
+      appId: config.appId,
+      data: {
+        config,
+        subscriptionId: NotifySphere.subscriptionId,
+        error: JSON.stringify(err),
+      },
+    });
+ 
+    throw new Error(
+      `NotifySphere initialization failed: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
+}
 
   /**
    * Calls the registration API and persists the token, subscription_id, and
@@ -602,6 +751,98 @@ class NotifySphere {
       }
     });
     NotifySphere.unsubscribers.push(unsubRefresh);
+  }
+
+  // ─── Post campaign event ──────────────────────────────────────────────────
+
+  /**
+   * Posts a campaign event to the NotifySphere platform.
+   *
+   * Use this to track custom conversion events (e.g. 'booking', 'purchase',
+   * 'signup') from within your app so they can be attributed to a campaign.
+   *
+   * The `subscription_id` is read automatically from the value persisted by
+   * `initialize()`. If `ns_click` is not provided the field is omitted from
+   * the request body.
+   *
+   * @example
+   * await NotifySphere.postEvent({ event: 'booking', nsClick: 'abc123' });
+   */
+  static async postEvent(params: {
+    /** The event name, e.g. 'booking', 'purchase', 'signup' */
+    event: string;
+    /**
+     * The `ns_click` attribution token received from a campaign deep-link.
+     * Optional — omit if not available.
+     */
+    nsClick?: string;
+    /** Falls back to the appId provided in initialize() */
+    appId?: string;
+    data?:any
+  }): Promise<unknown> {
+    console.log('NotifysphareEventParams0',params)
+    const appId = params.appId ?? NotifySphere.appId;
+
+   
+
+    if (!appId) {
+      warn('appId missing — cannot post event');
+      return null;
+    }
+     console.log('NotifysphareEventParams1',params,NotifySphere.subscriptionId)
+    // if (!NotifySphere.subscriptionId) {
+    //      console.log('subscriptionId not found',NotifySphere.subscriptionId)
+   
+    //   warn('subscription_id missing — cannot post event (call initialize() first)');
+    //   return null;
+    // }
+
+      console.log('NotifysphareEventParams2',params,NotifySphere.subscriptionId)
+   
+
+    try {
+      const body: Record<string, any>  = {
+        event: params.event,
+        subscription_id: NotifySphere.subscriptionId,
+       
+      };
+
+      if (params.nsClick) {
+        body['ns_click'] = params.nsClick;
+      }
+
+      if (params.data !== undefined && params.data !== null) {
+        body.data = params.data;
+      }
+
+
+
+ 
+
+   console.log('NotifysphareEventParams3',JSON.stringify(body))
+   
+      const res = await axios.post(
+        `${NotifySphere.baseUrl}${appId}/campaign/event`,
+        body,
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(NotifySphere.apiKey
+              ? { Authorization: `Bearer ${NotifySphere.apiKey}` }
+              : {}),
+          },
+          maxBodyLength: 1024 * 50,
+          timeout: 10000,
+        }
+      );
+      console.log('NotifysphareEventParams4',res.data,params?.event)
+
+      log('postEvent response:', res.data);
+      return res.data;
+    } catch (err) {
+      logError('Error posting campaign event:', err);
+      return null;
+    }
   }
 
   // ─── Update tags ─────────────────────────────────────────────────────────
@@ -737,6 +978,8 @@ class NotifySphere {
 
     if (config?.debug) _debug = true;
 
+
+    console.log('checkdelivery1')
     // Apply any config overrides immediately so they are in place even when
     // the app starts from a terminated state.
     if (config?.deliveryUrl) {
@@ -749,10 +992,12 @@ class NotifySphere {
         config.baseUrl ?? DEFAULT_BASE_URL,
         true
       );
+       console.log('checkdelivery2')
       NotifySphere.baseUrl = base;
       NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
         `${base}${config.appId}/delivery/confirm`
       );
+ console.log('checkdelivery3',NotifySphere.deliveryUrl)
       NotifySphere.appId = config.appId;
     }
     if (config?.apiKey) {
@@ -794,7 +1039,7 @@ class NotifySphere {
         visibility: AndroidVisibility.PUBLIC,
       });
     }
-
+ console.log('checkdelivery4')
     messaging().setBackgroundMessageHandler(async (remoteMessage) => {
       const msg = remoteMessage as FirebaseRemoteMessage;
 
@@ -890,14 +1135,6 @@ private static setupListeners(): void {
     
     console.log('🔔 FOREGROUND onMessage fired:', JSON.stringify(msg));
 
-    const title = msg.data?.title || msg.notification?.title || 'Notification';
-    const body  = msg.data?.body  || msg.notification?.body  || '';
-    const image =
-      msg.data?.imageUrl ||
-      msg.notification?.android?.imageUrl ||
-      msg.notification?.imageUrl ||
-      undefined;
-
     try {
       // ✅ Channel ensure karo pehle
       await NotifySphere.ensureChannel(
@@ -908,43 +1145,9 @@ private static setupListeners(): void {
 
        console.log('📢 notifee display calling...');
 
-      await notifee.displayNotification({
-        title,
-        body,
-        android: {
-          channelId: 'channel_default',
-          importance: AndroidImportance.HIGH,
-          pressAction: {id: 'default'},
-          sound: 'default',
-         smallIcon: 'ic_launcher',
-          visibility: AndroidVisibility.PUBLIC,
-          ...(image
-            ? {
-                style: {
-                  type: AndroidStyle.BIGPICTURE,
-                  picture: image,
-                },
-              }
-            : body.length > 44
-            ? {
-                style: {
-                  type: AndroidStyle.BIGTEXT,
-                  text: body,
-                },
-              }
-            : {}),
-        },
-        ios: {
-          sound: 'default',
-          foregroundPresentationOptions: {
-            alert: true,
-            badge: true,
-            sound: true,
-          },
-          ...(image ? {attachments: [{url: image}]} : {}),
-        },
-        data: msg.data,
-      });
+      await NotifySphere.displayLocalNotification(msg)
+
+      
 
           console.log('✅ notifee display SUCCESS:', );
       console.log('✅ Foreground notification displayed successfully');
@@ -1113,8 +1316,16 @@ private static async ensureChannel(
   static async displayLocalNotification(
     remoteMessage: FirebaseRemoteMessage
   ): Promise<void> {
-    // Use || so empty strings fall back just like null/undefined
-    const soundRaw = remoteMessage.data?.sound || 'default';
+    // Resolve sound: prefer data.sound, then notification.ios.sound, then 'default'.
+    // On iOS, RNFB maps the FCM notification sound to notification.ios.sound,
+    // which is either a plain string or a NotificationIOSCriticalSound object
+    // { name, critical, volume }. There is NO top-level notification.sound field
+    // on iOS — reading it always returns undefined.
+    const iosNotifSound = remoteMessage.notification?.ios?.sound;
+    const soundRaw =
+      remoteMessage.data?.sound ||
+      (typeof iosNotifSound === 'string' ? iosNotifSound : iosNotifSound?.name) ||
+      'default';
     const soundName = soundRaw.replace(/\..+$/, '');
 
     // Resolve image — empty string treated same as missing
@@ -1182,12 +1393,18 @@ private static async ensureChannel(
       // Resolve iOS sound — strip extension, Notifee expects just the resource name
       const iosSound = soundName === 'default' ? 'default' : soundRaw;
 
+      console.log('📢 notifee display sound calling...',iosSound);
+
       await notifee.displayNotification({
         title,
         body,
         ios: {
           sound: iosSound,
-          attachments: image ? [{ url: image }] : undefined,
+          // Omit the key entirely when there is no image.
+          // Passing `attachments: undefined` causes Notifee's native bridge to
+          // throw "expected an array value", so we use spread instead of a
+          // ternary that leaves the key present.
+          ...(image ? { attachments: [{ url: image }] } : {}),
           foregroundPresentationOptions: {
             alert: true,
             badge: true,

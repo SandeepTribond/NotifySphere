@@ -15,7 +15,6 @@
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		84E2C0ED9D7620D8EFEC7A06 /* Pods_NotifySphere.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BFF554FC328655446E0D95BE /* Pods_NotifySphere.framework */; };
 		9947B4503EB80A379371B055 /* Pods_NotifySphereExample.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2C311A7A30E62AC2B733506D /* Pods_NotifySphereExample.framework */; };
-		A91E64082E7D34BF00EE2E7C /* lordPunit.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = A91E64072E7D34BF00EE2E7C /* lordPunit.mp3 */; };
 		A9A76DED2E7C2073001A2C71 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A9A76DEC2E7C2073001A2C71 /* GoogleService-Info.plist */; };
 		A9E037792E7C303100D05FC7 /* accept_booking_sound.wav in Resources */ = {isa = PBXBuildFile; fileRef = A9E037732E7C303100D05FC7 /* accept_booking_sound.wav */; };
 		A9E0377A2E7C303100D05FC7 /* service_provider_reached.wav in Resources */ = {isa = PBXBuildFile; fileRef = A9E037752E7C303100D05FC7 /* service_provider_reached.wav */; };
@@ -56,7 +55,6 @@
 		38EA6BFE05B6A1232C964B0B /* Pods-NotifySphereExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-NotifySphereExample.debug.xcconfig"; path = "Target Support Files/Pods-NotifySphereExample/Pods-NotifySphereExample.debug.xcconfig"; sourceTree = "<group>"; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = NotifySphereExample/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = NotifySphereExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		A91E64072E7D34BF00EE2E7C /* lordPunit.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = lordPunit.mp3; sourceTree = "<group>"; };
 		A9A76DEC2E7C2073001A2C71 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		A9A76DEE2E7C2744001A2C71 /* NotifySphereExample.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = NotifySphereExample.entitlements; path = NotifySphereExample/NotifySphereExample.entitlements; sourceTree = "<group>"; };
 		A9E037732E7C303100D05FC7 /* accept_booking_sound.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = accept_booking_sound.wav; sourceTree = "<group>"; };
@@ -151,7 +149,6 @@
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
 				A9A76DEC2E7C2073001A2C71 /* GoogleService-Info.plist */,
 				A9E037732E7C303100D05FC7 /* accept_booking_sound.wav */,
-				A91E64072E7D34BF00EE2E7C /* lordPunit.mp3 */,
 				A9E037752E7C303100D05FC7 /* service_provider_reached.wav */,
 			);
 			indentWidth = 2;
@@ -273,7 +270,6 @@
 				A9A76DED2E7C2073001A2C71 /* GoogleService-Info.plist in Resources */,
 				A9E037792E7C303100D05FC7 /* accept_booking_sound.wav in Resources */,
 				A9E0377A2E7C303100D05FC7 /* service_provider_reached.wav in Resources */,
-				A91E64082E7D34BF00EE2E7C /* lordPunit.mp3 in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				30AC27DC2F9B75F500E249B5 /* nowait_sound.wav in Resources */,
 				7884121D36C8E2FA1BF47D6A /* PrivacyInfo.xcprivacy in Resources */,
