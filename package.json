@@ -37,7 +37,18 @@
   "keywords": [
     "react-native",
     "ios",
-    "android"
+    "android",
+    "push-notifications",
+    "notifications",
+    "fcm",
+    "firebase-messaging",
+    "apns",
+    "notifee",
+    "delivery-tracking",
+    "whatsapp",
+    "deep-linking",
+    "attribution",
+    "onesignal-alternative"
   ],
   "repository": {
     "type": "git",
@@ -46,9 +57,9 @@
   "author": "Tribond Infosystem Pvt. Ltd.",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/SandeepTribond/NotifySphere.git/issues"
+    "url": "https://github.com/SandeepTribond/NotifySphere/issues"
   },
-  "homepage": "https://notifysphere.net",
+  "homepage": "https://notifysphere.net/docs/react-native?utm_source=npm&utm_medium=package",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/"
   },

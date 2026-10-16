@@ -1,5 +1,7 @@
 # react-native-notify-sphere
 
+> 📖 **Full setup guide:** [notifysphere.net/docs/react-native](https://notifysphere.net/docs/react-native?utm_source=npm&utm_medium=readme) · Free up to 1,000 monthly active users at [notifysphere.net](https://notifysphere.net/?utm_source=npm&utm_medium=readme)
+
 A React Native push notification SDK built on Firebase Cloud Messaging (FCM) and Notifee. Handles delivery tracking, press tracking, user segmentation via tags, and rich notifications — with full Android and iOS support.
 
 This SDK is part of [NotifySphere](https://notifysphere.net) — a unified engagement platform combining push notifications, WhatsApp Business API messaging, in-app support, and mobile attribution (OneLink deep linking) in one dashboard.
