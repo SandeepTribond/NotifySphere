@@ -2,14 +2,10 @@ import { useEffect } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import NotifySphere from 'react-native-notify-sphere';
 
-const APP_ID = 'b9f4dee6-90bf-a73b-057a-a7091a0a9048';
-export const API_TOKEN = 'ns_sk_lskqj4XRX0GR77AsN_DMrVxhr5bwvetRwSuSafVn5UI'; // Replace with your app's Bearer token
-
-
-// export const APP_ID = 'c7b3c35c-f2d1-9dee-e7ee-66b688396dba';
-// export const API_TOKEN = 'ns_sk_-JlEDcpsNvEsgWAdGWeAnWpB2eEPobJO1Pc35DmsQcE'; // Replace with your app's Bearer token
-
-
+// Get these from the notifySphere dashboard (App settings → API keys).
+// Never commit real keys: this repository is public.
+export const APP_ID = 'YOUR_APP_ID';
+export const API_TOKEN = 'YOUR_API_TOKEN';
 
 const PUSH_TYPE = Platform.OS === 'android' ? 'AndroidPush' : 'IOSPush';
 
