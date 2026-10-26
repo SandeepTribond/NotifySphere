@@ -12,11 +12,12 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PermissionsAndroid, Platform } from 'react-native';
 
-const STORAGE_KEY_TOKEN    = '@notifysphere_fcm_token';
-const STORAGE_KEY_SUB_ID   = '@notifysphere_subscription_id';
+const STORAGE_KEY_TOKEN = '@notifysphere_fcm_token';
+const STORAGE_KEY_SUB_ID = '@notifysphere_subscription_id';
 const STORAGE_KEY_USER_HASH = '@notifysphere_user_hash';
-const STORAGE_KEY_CHANNELS  = '@notifysphere_channels';
-const STORAGE_KEY_CHANNEL_MIGRATED = '@notifysphere_channel_default_migrated_v1';
+const STORAGE_KEY_CHANNELS = '@notifysphere_channels';
+const STORAGE_KEY_CHANNEL_MIGRATED =
+  '@notifysphere_channel_default_migrated_v1';
 
 // ─── Type definitions ──────────────────────────────────────────────────────────
 
@@ -269,46 +270,40 @@ class NotifySphere {
   // ─── Permissions ─────────────────────────────────────────────────────────
 
   static async checkApplicationPermission(): Promise<boolean> {
-      log('🔥 checkApplicationPermission START');
+    log('🔥 checkApplicationPermission START');
     try {
-          log('🔥 Platform:', Platform.OS);
-    log('🔥 Platform Version:', Platform.Version);
-     
-    if (Platform.OS === 'android' && Platform.Version >= 33) {
-          // const granted = await PermissionsAndroid.request(
+      log('🔥 Platform:', Platform.OS);
+      log('🔥 Platform Version:', Platform.Version);
+
+      if (Platform.OS === 'android' && Platform.Version >= 33) {
+        // const granted = await PermissionsAndroid.request(
         //   PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
         // );
-     const alreadyGranted = await PermissionsAndroid.check(
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-      );
-       log('🔐 Notification permission already granted:', alreadyGranted);
+        const alreadyGranted = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        );
+        log('🔐 Notification permission already granted:', alreadyGranted);
 
-  if (alreadyGranted) {
-        return true;
-      }
+        if (alreadyGranted) {
+          return true;
+        }
 
-         log('🔥 BEFORE PermissionsAndroid.request');
+        log('🔥 BEFORE PermissionsAndroid.request');
 
-            const requestPromise = PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
-      );
-
+        const requestPromise = PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        );
 
         const timeoutPromise = new Promise<string>((resolve) => {
-        setTimeout(() => {
-          log('⏰ Permission request timeout');
-          resolve(PermissionsAndroid.RESULTS.DENIED);
-        }, 10000);
-      });
+          setTimeout(() => {
+            log('⏰ Permission request timeout');
+            resolve(PermissionsAndroid.RESULTS.DENIED);
+          }, 10000);
+        });
 
-      const granted = await Promise.race([
-        requestPromise,
-        timeoutPromise,
-      ]);
+        const granted = await Promise.race([requestPromise, timeoutPromise]);
 
-
-
-         log('🔥 AFTER PermissionsAndroid.request:', granted);
+        log('🔥 AFTER PermissionsAndroid.request:', granted);
         return granted === PermissionsAndroid.RESULTS.GRANTED;
       } else if (Platform.OS === 'ios') {
         const authStatus = await messaging().requestPermission();
@@ -318,10 +313,10 @@ class NotifySphere {
         );
       }
 
-        log('🔥 Permission request skipped');
+      log('🔥 Permission request skipped');
       return true;
     } catch (err) {
-       logError('🔥 Permission ERROR:', err);
+      logError('🔥 Permission ERROR:', err);
       logError('Error requesting notification permission:', err);
       return false;
     }
@@ -342,25 +337,25 @@ class NotifySphere {
       ]);
 
       return {
-        sdk:            SDK_VERSION,
-        device_model:   DeviceInfo.getModel(),
-        device_os:      Platform.OS,
+        sdk: SDK_VERSION,
+        device_model: DeviceInfo.getModel(),
+        device_os: Platform.OS,
         device_version: DeviceInfo.getSystemVersion(),
-        carrier:        carrier ?? '',
-        app_version:    DeviceInfo.getVersion(),
+        carrier: carrier ?? '',
+        app_version: DeviceInfo.getVersion(),
         // Intl is available in Hermes/JSC without any extra package
-        timezone_id:    Intl.DateTimeFormat().resolvedOptions().timeZone ?? '',
+        timezone_id: Intl.DateTimeFormat().resolvedOptions().timeZone ?? '',
       };
     } catch (err) {
       warn('getDeviceInfo failed, using fallback values:', err);
       return {
-        sdk:            SDK_VERSION,
-        device_model:   '',
-        device_os:      Platform.OS,
+        sdk: SDK_VERSION,
+        device_model: '',
+        device_os: Platform.OS,
         device_version: String(Platform.Version),
-        carrier:        '',
-        app_version:    '',
-        timezone_id:    '',
+        carrier: '',
+        app_version: '',
+        timezone_id: '',
       };
     }
   }
@@ -431,22 +426,26 @@ class NotifySphere {
   static async initialize(
     config: InitializeConfig
   ): Promise<string | undefined> {
- 
-_debug = config.debug ?? false;
+    _debug = config.debug ?? false;
     NotifySphere.appId = config.appId;
-    NotifySphere.baseUrl = NotifySphere.enforceHttps(config.baseUrl ?? DEFAULT_BASE_URL, true);
+    NotifySphere.baseUrl = NotifySphere.enforceHttps(
+      config.baseUrl ?? DEFAULT_BASE_URL,
+      true
+    );
     NotifySphere.trackingUrl = NotifySphere.enforceHttps(
-      config.trackingUrl ?? `${NotifySphere.baseUrl}${config.appId}/onpress/handle`
+      config.trackingUrl ??
+        `${NotifySphere.baseUrl}${config.appId}/onpress/handle`
     );
     NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
-      config.deliveryUrl ?? `${NotifySphere.baseUrl}${config.appId}/delivery/confirm`
+      config.deliveryUrl ??
+        `${NotifySphere.baseUrl}${config.appId}/delivery/confirm`
     );
     NotifySphere.apiKey = config.apiKey ?? null;
 
-log('initialize1')
+    log('initialize1');
     try {
-log('initialize2')
-    await NotifySphere.checkApplicationPermission();
+      log('initialize2');
+      await NotifySphere.checkApplicationPermission();
       // On iOS, ensure the device is registered with APNs before asking
       // Firebase for an FCM token. Without this, getToken() throws
       // "No APNS token specified" on the first launch.
@@ -454,20 +453,18 @@ log('initialize2')
         await NotifySphere.registerForRemoteMessagesIfNeeded();
       }
 
-      log('initialize3')
-            
+      log('initialize3');
+
       const fcmToken = await messaging().getToken();
       NotifySphere.fcmToken = fcmToken ?? '';
 
-        log('initialize4')
+      log('initialize4');
       // ── Restore cached subscription_id immediately so tracking calls
       //    have it available even before the registration API responds.
       const cachedSubId = await AsyncStorage.getItem(STORAGE_KEY_SUB_ID);
       if (cachedSubId) {
         NotifySphere.subscriptionId = cachedSubId;
       }
-
-     
 
       // ── Only call the registration API when the FCM token OR any user
       //    detail has changed. This avoids a redundant network call on every
@@ -478,7 +475,6 @@ log('initialize2')
         AsyncStorage.getItem(STORAGE_KEY_CHANNELS),
       ]);
 
-     
       // Re-create all backend-configured channels on every launch so they
       // always exist before a background notification arrives — even after
       // a reinstall or app-data clear. Notifee's createChannel is idempotent.
@@ -493,14 +489,14 @@ log('initialize2')
       const tokenChanged = fcmToken !== cachedToken;
       const userChanged = currentUserHash !== cachedUserHash;
 
-
       // ── Extract install referrer attribution (Android only)
       if (Platform.OS === 'android') {
         try {
           const referrerResult = await RNInstallReferrer.getReferrer();
-          const referrerString: string | null = referrerResult?.installReferrer ?? null;
-        log('referrerResultnpm',referrerResult)
-        
+          const referrerString: string | null =
+            referrerResult?.installReferrer ?? null;
+          log('referrerResultnpm', referrerResult);
+
           if (referrerString) {
             const params = new URLSearchParams(referrerString);
             const nsClick = params.get('ns_click');
@@ -528,19 +524,19 @@ log('initialize2')
           currentUserHash
         );
       } else {
-        log('Token and user details unchanged — skipping registration API call');
+        log(
+          'Token and user details unchanged — skipping registration API call'
+        );
       }
 
-
- 
-          NotifySphere.postEvent({
-     event: 'initialize_start',
-    appId: config.appId,
-    data: {
-      config,
-      subscriptionId: 'aea4d918e07921f1e2bce8bc606fa5ba6bd1ea7b7f7c6304',
-    },
-  });
+      NotifySphere.postEvent({
+        event: 'initialize_start',
+        appId: config.appId,
+        data: {
+          config,
+          subscriptionId: 'aea4d918e07921f1e2bce8bc606fa5ba6bd1ea7b7f7c6304',
+        },
+      });
 
       // ── Android: ensure the default channel exists (idempotent)
       if (Platform.OS === 'android') {
@@ -575,31 +571,31 @@ log('initialize2')
       }
 
       if (!NotifySphere.initialized) {
-         log('🚀 setupListeners calling...');
+        log('🚀 setupListeners calling...');
         NotifySphere.setupListeners();
         // Watch for token refreshes (Firebase can rotate the token silently)
         NotifySphere.watchTokenRefresh(config);
         NotifySphere.initialized = true;
-         log('✅ setupListeners done');
+        log('✅ setupListeners done');
       }
 
       return subscriptionId;
-    } catch (err:any) {
+    } catch (err: any) {
       // logError('Notifysphre initialization error:', err);
- logError('Notifysphre initialization error:',err);
+      logError('Notifysphre initialization error:', err);
       NotifySphere.postEvent({
-          event: 'initialize_error',
-          appId: config.appId,
-          data: {
-            config,
-            subscriptionId: 'aea4d918e07921f1e2bce8bc606fa5ba6bd1ea7b7f7c6304',
-            error:JSON.stringify(err)
-          },
-        });
+        event: 'initialize_error',
+        appId: config.appId,
+        data: {
+          config,
+          subscriptionId: 'aea4d918e07921f1e2bce8bc606fa5ba6bd1ea7b7f7c6304',
+          error: JSON.stringify(err),
+        },
+      });
 
-       throw new Error(
-    `NotifySphere initialization failed: ${err instanceof Error ? err.message : String(err)}`
-  );
+      throw new Error(
+        `NotifySphere initialization failed: ${err instanceof Error ? err.message : String(err)}`
+      );
     }
   }
 
@@ -613,7 +609,6 @@ log('initialize2')
     fcmToken: string,
     userHash?: string
   ): Promise<string | undefined> {
-
     const devInfo = await NotifySphere.getDeviceInfo();
     const res = await axios.post(
       `${NotifySphere.baseUrl}${config.appId}/users`,
@@ -661,8 +656,14 @@ log('initialize2')
       res.data?.notification_channels;
     if (Platform.OS === 'android' && channels && channels.length > 0) {
       await NotifySphere.createChannelsFromConfig(channels);
-      await AsyncStorage.setItem(STORAGE_KEY_CHANNELS, JSON.stringify(channels));
-      log('Channels created and cached from registration response:', channels.length);
+      await AsyncStorage.setItem(
+        STORAGE_KEY_CHANNELS,
+        JSON.stringify(channels)
+      );
+      log(
+        'Channels created and cached from registration response:',
+        channels.length
+      );
     }
 
     // Persist token, subscription_id, and user hash for future launch comparisons
@@ -725,33 +726,29 @@ log('initialize2')
     nsClick?: string;
     /** Falls back to the appId provided in initialize() */
     appId?: string;
-    data?:any
+    data?: any;
   }): Promise<unknown> {
-    log('NotifysphareEventParams0',params)
+    log('NotifysphareEventParams0', params);
     const appId = params.appId ?? NotifySphere.appId;
-
-   
 
     if (!appId) {
       warn('appId missing — cannot post event');
       return null;
     }
-     log('NotifysphareEventParams1',params,NotifySphere.subscriptionId)
+    log('NotifysphareEventParams1', params, NotifySphere.subscriptionId);
     // if (!NotifySphere.subscriptionId) {
     //      console.log('subscriptionId not found',NotifySphere.subscriptionId)
-   
+
     //   warn('subscription_id missing — cannot post event (call initialize() first)');
     //   return null;
     // }
 
-      log('NotifysphareEventParams2',params,NotifySphere.subscriptionId)
-   
+    log('NotifysphareEventParams2', params, NotifySphere.subscriptionId);
 
     try {
-      const body: Record<string, any>  = {
+      const body: Record<string, any> = {
         event: params.event,
         subscription_id: NotifySphere.subscriptionId,
-       
       };
 
       if (params.nsClick) {
@@ -762,8 +759,8 @@ log('initialize2')
         body.data = params.data;
       }
 
-   log('NotifysphareEventParams3',JSON.stringify(body))
-   
+      log('NotifysphareEventParams3', JSON.stringify(body));
+
       const res = await axios.post(
         `${NotifySphere.baseUrl}${appId}/campaign/event`,
         body,
@@ -778,7 +775,7 @@ log('initialize2')
           timeout: 10000,
         }
       );
-      log('NotifysphareEventParams4',res.data)
+      log('NotifysphareEventParams4', res.data);
 
       log('postEvent response:', res.data);
       return res.data;
@@ -1049,161 +1046,177 @@ log('initialize2')
 
   // ─── Cleanup ──────────────────────────────────────────────────────────────
 
-
-
   static setBackgroundHandler(config?: {
-  /**
-   * Override the delivery-confirmation URL for background/terminated state.
-   * Required if you use a custom deliveryUrl AND need it to work when the
-   * app is terminated (since initialize() won't have run yet).
-   */
-  deliveryUrl?: string;
-  /**
-   * Override the API key for background/terminated state.
-   * Required if you use apiKey AND need delivery receipts when terminated.
-   */
-  apiKey?: string;
-  /**
-   * The subscription ID returned by initialize().
-   * If omitted, the SDK will read it from AsyncStorage inside the handler
-   * so the registration itself can stay synchronous (required by FCM).
-   */
-  subscriptionId?: string;
-  /**
-   * Your NotifySphere appId. Used to derive the default `deliveryUrl`
-   * (`${baseUrl}${appId}/delivery/confirm`) when the app is started from a
-   * terminated state and `initialize()` has not yet run.
-   */
-  appId?: string;
-  /**
-   * Override the base URL for the NotifySphere API. Defaults to the hosted
-   * service. Used together with `appId` to derive `deliveryUrl`.
-   */
-  baseUrl?: string;
-  /** Enable verbose logging. Defaults to false. */
-  debug?: boolean;
-}): void {
-  // IMPORTANT: this function MUST be called synchronously at the top of
-  // index.js (before AppRegistry.registerComponent). Firebase requires the
-  // background message handler to be registered at module-evaluation time.
-  // Anything that needs AsyncStorage MUST be loaded *inside* the async
-  // handler below, not before this call.
+    /**
+     * Override the delivery-confirmation URL for background/terminated state.
+     * Required if you use a custom deliveryUrl AND need it to work when the
+     * app is terminated (since initialize() won't have run yet).
+     */
+    deliveryUrl?: string;
+    /**
+     * Override the API key for background/terminated state.
+     * Required if you use apiKey AND need delivery receipts when terminated.
+     */
+    apiKey?: string;
+    /**
+     * The subscription ID returned by initialize().
+     * If omitted, the SDK will read it from AsyncStorage inside the handler
+     * so the registration itself can stay synchronous (required by FCM).
+     */
+    subscriptionId?: string;
+    /**
+     * Your NotifySphere appId. Used to derive the default `deliveryUrl`
+     * (`${baseUrl}${appId}/delivery/confirm`) when the app is started from a
+     * terminated state and `initialize()` has not yet run.
+     */
+    appId?: string;
+    /**
+     * Override the base URL for the NotifySphere API. Defaults to the hosted
+     * service. Used together with `appId` to derive `deliveryUrl`.
+     */
+    baseUrl?: string;
+    /** Enable verbose logging. Defaults to false. */
+    debug?: boolean;
+  }): void {
+    // IMPORTANT: this function MUST be called synchronously at the top of
+    // index.js (before AppRegistry.registerComponent). Firebase requires the
+    // background message handler to be registered at module-evaluation time.
+    // Anything that needs AsyncStorage MUST be loaded *inside* the async
+    // handler below, not before this call.
 
-  // ── 1. Config overrides ────────────────────────────────────────────────
-  try {
-    if (config?.debug) _debug = true;
+    // ── 1. Config overrides ────────────────────────────────────────────────
+    try {
+      if (config?.debug) _debug = true;
 
-    if (config?.deliveryUrl) {
-      NotifySphere.deliveryUrl = NotifySphere.enforceHttps(config.deliveryUrl);
-    } else if (config?.appId) {
-      const base = NotifySphere.enforceHttps(
-        config.baseUrl ?? DEFAULT_BASE_URL,
-        true,
-      );
-      NotifySphere.baseUrl = base;
-      NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
-        `${base}${config.appId}/delivery/confirm`,
-      );
-      NotifySphere.appId = config.appId;
+      if (config?.deliveryUrl) {
+        NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
+          config.deliveryUrl
+        );
+      } else if (config?.appId) {
+        const base = NotifySphere.enforceHttps(
+          config.baseUrl ?? DEFAULT_BASE_URL,
+          true
+        );
+        NotifySphere.baseUrl = base;
+        NotifySphere.deliveryUrl = NotifySphere.enforceHttps(
+          `${base}${config.appId}/delivery/confirm`
+        );
+        NotifySphere.appId = config.appId;
+      }
+      if (config?.apiKey) {
+        NotifySphere.apiKey = config.apiKey;
+      }
+      if (config?.subscriptionId) {
+        NotifySphere.subscriptionId = config.subscriptionId;
+      }
+    } catch (err) {
+      logError('setBackgroundHandler: failed to apply config overrides:', err);
     }
-    if (config?.apiKey) {
-      NotifySphere.apiKey = config.apiKey;
-    }
-    if (config?.subscriptionId) {
-      NotifySphere.subscriptionId = config.subscriptionId;
-    }
-  } catch (err) {
-    logError('setBackgroundHandler: failed to apply config overrides:', err);
-  }
 
-  // ── 2. Default Android channel ─────────────────────────────────────────
-  // DO NOT call notifee.deleteChannel here (it cancels active notifications
-  // in terminated state). Channel cleanup belongs in initialize().
-  try {
-    if (Platform.OS === 'android') {
-      notifee
-        .createChannel({
-          id: 'channel_default',
-          name: 'Default Channel',
-          importance: AndroidImportance.HIGH,
-          sound: 'default',
-          lights: true,
-          lightColor: '#0000FF',
-          vibration: true,
-          visibility: AndroidVisibility.PUBLIC,
-        })
-        .catch((err: any) => {
-          logError('setBackgroundHandler: createChannel rejected:', err);
-        });
+    // ── 2. Default Android channel ─────────────────────────────────────────
+    // DO NOT call notifee.deleteChannel here (it cancels active notifications
+    // in terminated state). Channel cleanup belongs in initialize().
+    try {
+      if (Platform.OS === 'android') {
+        notifee
+          .createChannel({
+            id: 'channel_default',
+            name: 'Default Channel',
+            importance: AndroidImportance.HIGH,
+            sound: 'default',
+            lights: true,
+            lightColor: '#0000FF',
+            vibration: true,
+            visibility: AndroidVisibility.PUBLIC,
+          })
+          .catch((err: any) => {
+            logError('setBackgroundHandler: createChannel rejected:', err);
+          });
+      }
+    } catch (err) {
+      logError('setBackgroundHandler: createChannel threw:', err);
     }
-  } catch (err) {
-    logError('setBackgroundHandler: createChannel threw:', err);
-  }
 
-  // ── 3. FCM background message handler ──────────────────────────────────
-  try {
-    messaging().setBackgroundMessageHandler(async (remoteMessage) => {
-      try {
-        const msg = remoteMessage as FirebaseRemoteMessage;
-
+    // ── 3. FCM background message handler ──────────────────────────────────
+    try {
+      messaging().setBackgroundMessageHandler(async (remoteMessage) => {
         try {
-          log(
-            '[NotifySphere] background handler fired.Testing',
-            'hasNotificationField=',
-            msg?.notification != null,
-            'notification=',
-            JSON.stringify(msg?.notification ?? null),
-            'data=',
-            JSON.stringify(msg?.data ?? {}),
-          );
-        } catch (logErr) {
-          // JSON.stringify can throw on circular data; never let logging crash us
-        }
+          const msg = remoteMessage as FirebaseRemoteMessage;
 
-        // Lazy-load subscription_id from AsyncStorage if not injected.
-        if (!NotifySphere.subscriptionId) {
           try {
-            const cachedSubId = await AsyncStorage.getItem(STORAGE_KEY_SUB_ID);
-            if (cachedSubId) NotifySphere.subscriptionId = cachedSubId;
-          } catch (err) {
-            logError('setBackgroundHandler: Failed to read cached subscription_id in background:', err);
+            log(
+              '[NotifySphere] background handler fired.Testing',
+              'hasNotificationField=',
+              msg?.notification != null,
+              'notification=',
+              JSON.stringify(msg?.notification ?? null),
+              'data=',
+              JSON.stringify(msg?.data ?? {})
+            );
+          } catch (logErr) {
+            // JSON.stringify can throw on circular data; never let logging crash us
           }
-        }
 
-        // Background / terminated: display is the OS's job (FCM/APNs).
-        // This handler only fires the delivery confirmation API.
-        try {
-          await NotifySphere.callbackOnDelivery(msg);
+          // Lazy-load subscription_id from AsyncStorage if not injected.
+          if (!NotifySphere.subscriptionId) {
+            try {
+              const cachedSubId =
+                await AsyncStorage.getItem(STORAGE_KEY_SUB_ID);
+              if (cachedSubId) NotifySphere.subscriptionId = cachedSubId;
+            } catch (err) {
+              logError(
+                'setBackgroundHandler: Failed to read cached subscription_id in background:',
+                err
+              );
+            }
+          }
+
+          // Background / terminated: display is the OS's job (FCM/APNs).
+          // This handler only fires the delivery confirmation API.
+          try {
+            await NotifySphere.callbackOnDelivery(msg);
+          } catch (err) {
+            logError(
+              'setBackgroundHandler: Background delivery confirmation failed:',
+              err
+            );
+          }
         } catch (err) {
-          logError('setBackgroundHandler: Background delivery confirmation failed:', err);
-        }
-      } catch (err) {
-        logError('setBackgroundHandler: Background message handler crashed:', err);
-      }
-    });
-  } catch (err) {
-    logError('setBackgroundHandler: failed to register FCM handler:', err);
-  }
-
-  // ── 4. Notifee background events ───────────────────────────────────────
-  try {
-    notifee.onBackgroundEvent(async ({type, detail}) => {
-      try {
-        log('Background notifee event, type:', type);
-        if (type === EventType.PRESS && detail?.notification) {
-          await NotifySphere.callbackOnpress(
-            detail.notification as NotifeeNotification,
-            'press',
+          logError(
+            'setBackgroundHandler: Background message handler crashed:',
+            err
           );
         }
-      } catch (err) {
-        logError('setBackgroundHandler: Background notifee event handler failed:', err);
-      }
-    });
-  } catch (err) {
-    logError('setBackgroundHandler: failed to register notifee background event:', err);
+      });
+    } catch (err) {
+      logError('setBackgroundHandler: failed to register FCM handler:', err);
+    }
+
+    // ── 4. Notifee background events ───────────────────────────────────────
+    try {
+      notifee.onBackgroundEvent(async ({ type, detail }) => {
+        try {
+          log('Background notifee event, type:', type);
+          if (type === EventType.PRESS && detail?.notification) {
+            await NotifySphere.callbackOnpress(
+              detail.notification as NotifeeNotification,
+              'press'
+            );
+          }
+        } catch (err) {
+          logError(
+            'setBackgroundHandler: Background notifee event handler failed:',
+            err
+          );
+        }
+      });
+    } catch (err) {
+      logError(
+        'setBackgroundHandler: failed to register notifee background event:',
+        err
+      );
+    }
   }
-}
   /**
    * Unsubscribes all active listeners and resets internal state.
    * This is local only — the device stays linked to the user server-side.
@@ -1298,83 +1311,78 @@ log('initialize2')
 
   // ─── Private: listeners ───────────────────────────────────────────────────
 
-private static setupListeners(): void {
-  // ✅ Foreground messages
-  const unsubMessage = messaging().onMessage(async (remoteMessage) => {
-   
-   log('🔔 onMessage FIRED'); // ← yeh aata hai?
-    const msg = remoteMessage as FirebaseRemoteMessage;
-    log('🔔 MSG DATA:', JSON.stringify(msg));
-    
-    log('🔔 FOREGROUND onMessage fired:', JSON.stringify(msg));
+  private static setupListeners(): void {
+    // ✅ Foreground messages
+    const unsubMessage = messaging().onMessage(async (remoteMessage) => {
+      log('🔔 onMessage FIRED'); // ← yeh aata hai?
+      const msg = remoteMessage as FirebaseRemoteMessage;
+      log('🔔 MSG DATA:', JSON.stringify(msg));
 
+      log('🔔 FOREGROUND onMessage fired:', JSON.stringify(msg));
 
-    try {
-      // ✅ Channel ensure karo pehle
-      await NotifySphere.ensureChannel(
-        'channel_default',
-        'Default Channel',
-        'default',
-      );
+      try {
+        // ✅ Channel ensure karo pehle
+        await NotifySphere.ensureChannel(
+          'channel_default',
+          'Default Channel',
+          'default'
+        );
 
-       log('📢 notifee display calling...');
+        log('📢 notifee display calling...');
 
-      await NotifySphere.displayLocalNotification(msg)
+        await NotifySphere.displayLocalNotification(msg);
 
-      
+        log('✅ notifee display SUCCESS:');
+        log('✅ Foreground notification displayed successfully');
+      } catch (err) {
+        logError('❌ Foreground display error:', err);
+      }
 
-          log('✅ notifee display SUCCESS:', );
-      log('✅ Foreground notification displayed successfully');
-    } catch (err) {
-      logError('❌ Foreground display error:', err);
-    }
+      // Delivery receipt + callback
+      await NotifySphere.callbackOnDelivery(msg);
+      NotifySphere.sendCallback(msg, 'received');
+    });
 
-    // Delivery receipt + callback
-    await NotifySphere.callbackOnDelivery(msg);
-    NotifySphere.sendCallback(msg, 'received');
-  });
-
-  // App background se open via notification tap
-  const unsubOpened = messaging().onNotificationOpenedApp(
-    async (remoteMessage) => {
-      log('App opened from background via notification:', remoteMessage.messageId);
-      await NotifySphere.callbackOnpress(
-        remoteMessage as FirebaseRemoteMessage,
-        'opened',
-      );
-    },
-  );
-
-  // App terminated state se open via notification tap
-  messaging()
-    .getInitialNotification()
-    .then(remoteMessage => {
-      if (remoteMessage) {
-        NotifySphere.callbackOnpress(
+    // App background se open via notification tap
+    const unsubOpened = messaging().onNotificationOpenedApp(
+      async (remoteMessage) => {
+        log(
+          'App opened from background via notification:',
+          remoteMessage.messageId
+        );
+        await NotifySphere.callbackOnpress(
           remoteMessage as FirebaseRemoteMessage,
-          'initial',
+          'opened'
         );
       }
-    })
-    .catch(err => logError('getInitialNotification error:', err));
+    );
 
-  // Notifee foreground press events
-  const unsubForeground = notifee.onForegroundEvent(({type, detail}) => {
-    if (type === EventType.PRESS && detail.notification) {
-      NotifySphere.callbackOnpress(
-        detail.notification as NotifeeNotification,
-        'opened',
-      );
-    }
-  });
+    // App terminated state se open via notification tap
+    messaging()
+      .getInitialNotification()
+      .then((remoteMessage) => {
+        if (remoteMessage) {
+          NotifySphere.callbackOnpress(
+            remoteMessage as FirebaseRemoteMessage,
+            'initial'
+          );
+        }
+      })
+      .catch((err) => logError('getInitialNotification error:', err));
 
-  // ✅ Teeno unsubscribers push karo
-  NotifySphere.unsubscribers.push(
-    unsubMessage,
-    unsubOpened,
-    unsubForeground,
-  );
-}
+    // Notifee foreground press events
+    const unsubForeground = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.PRESS && detail.notification) {
+        NotifySphere.callbackOnpress(
+          detail.notification as NotifeeNotification,
+          'opened'
+        );
+      }
+    });
+
+    // ✅ Teeno unsubscribers push karo
+    NotifySphere.unsubscribers.push(unsubMessage, unsubOpened, unsubForeground);
+  }
 
   // ─── Private: backend channel helpers ────────────────────────────────────
 
@@ -1389,8 +1397,10 @@ private static setupListeners(): void {
   }
 
   /** Maps the backend lockScreen value to a Notifee AndroidVisibility level. */
-  private static mapVisibility(lockScreen: number | undefined): AndroidVisibility {
-    if (lockScreen === 1)  return AndroidVisibility.PUBLIC;
+  private static mapVisibility(
+    lockScreen: number | undefined
+  ): AndroidVisibility {
+    if (lockScreen === 1) return AndroidVisibility.PUBLIC;
     if (lockScreen === -1) return AndroidVisibility.SECRET;
     return AndroidVisibility.PRIVATE;
   }
@@ -1424,20 +1434,24 @@ private static setupListeners(): void {
       }
 
       const channelDef: AndroidChannel = {
-        id:         ch.channel_id,
-        name:       ch.name,
+        id: ch.channel_id,
+        name: ch.name,
         importance: NotifySphere.mapImportance(ch.Importance),
-        sound:      soundValue,
-        lights:     (ch.LED ?? 0) === 1,
-        vibration:  (ch.vibration ?? 0) === 1,
+        sound: soundValue,
+        lights: (ch.LED ?? 0) === 1,
+        vibration: (ch.vibration ?? 0) === 1,
         visibility: NotifySphere.mapVisibility(ch.lockScreen),
         ...(ch.description ? { description: ch.description } : {}),
-        ...(ch.led_color   ? { lightColor:  ch.led_color }   : {}),
+        ...(ch.led_color ? { lightColor: ch.led_color } : {}),
       };
 
       await notifee.createChannel(channelDef);
       NotifySphere.createdChannels.add(ch.channel_id);
-      log('Channel created from backend config:', ch.channel_id, `(${ch.name})`);
+      log(
+        'Channel created from backend config:',
+        ch.channel_id,
+        `(${ch.name})`
+      );
     }
   }
 
@@ -1449,31 +1463,31 @@ private static setupListeners(): void {
    * prevents redundant async calls within the same session.
    * No-op on iOS — channels are an Android-only concept.
    */
-private static async ensureChannel(
-  id: string,
-  name: string,
-  sound: string
-): Promise<void> {
-  if (Platform.OS !== 'android') return;
-  if (NotifySphere.createdChannels.has(id)) return;
+  private static async ensureChannel(
+    id: string,
+    name: string,
+    sound: string
+  ): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    if (NotifySphere.createdChannels.has(id)) return;
 
-  const soundName = sound.replace(/\..+$/, '');
+    const soundName = sound.replace(/\..+$/, '');
 
-  const channelDef: AndroidChannel = {
-    id,
-    name,
-    importance: AndroidImportance.HIGH,
-    sound: soundName, // ✅ 'default' bhi explicitly set karo
-    lights: true,
-    lightColor: '#0000FF',
-    vibration: true,
-    visibility: AndroidVisibility.PUBLIC, // ✅ lock screen pe bhi dikhe
-  };
+    const channelDef: AndroidChannel = {
+      id,
+      name,
+      importance: AndroidImportance.HIGH,
+      sound: soundName, // ✅ 'default' bhi explicitly set karo
+      lights: true,
+      lightColor: '#0000FF',
+      vibration: true,
+      visibility: AndroidVisibility.PUBLIC, // ✅ lock screen pe bhi dikhe
+    };
 
-  await notifee.createChannel(channelDef);
-  NotifySphere.createdChannels.add(id);
-  log('Android channel created/verified:', id);
-}
+    await notifee.createChannel(channelDef);
+    NotifySphere.createdChannels.add(id);
+    log('Android channel created/verified:', id);
+  }
 
   // ─── Private: display notification ───────────────────────────────────────
 
@@ -1498,7 +1512,9 @@ private static async ensureChannel(
     const iosNotifSound = remoteMessage.notification?.ios?.sound;
     const soundRaw =
       remoteMessage.data?.sound ||
-      (typeof iosNotifSound === 'string' ? iosNotifSound : iosNotifSound?.name) ||
+      (typeof iosNotifSound === 'string'
+        ? iosNotifSound
+        : iosNotifSound?.name) ||
       'default';
     const soundName = soundRaw.replace(/\..+$/, '');
 
@@ -1512,7 +1528,9 @@ private static async ensureChannel(
 
     // Resolve title/body — empty string treated as missing
     const title =
-      remoteMessage.data?.title || remoteMessage.notification?.title || undefined;
+      remoteMessage.data?.title ||
+      remoteMessage.notification?.title ||
+      undefined;
     const body =
       remoteMessage.data?.body || remoteMessage.notification?.body || undefined;
 
@@ -1521,7 +1539,11 @@ private static async ensureChannel(
       // use it directly — this lets the backend control which channel the notification
       // is assigned to. Otherwise fall back to a channel derived from the sound name.
       const channelId = remoteMessage.data?.channelId || `channel_${soundName}`;
-      await NotifySphere.ensureChannel(channelId, `Channel ${soundName}`, soundRaw);
+      await NotifySphere.ensureChannel(
+        channelId,
+        `Channel ${soundName}`,
+        soundRaw
+      );
 
       // Resolve smallIcon and largeIcon — both fall back to
       // 'ic_stat_notifysphere_default' if not provided in the payload.
@@ -1551,9 +1573,9 @@ private static async ensureChannel(
           smallIcon: smallIconResolved,
           largeIcon: largeIconResolved,
           style: androidStyle,
-             pressAction: { id: 'default' },
-      importance: AndroidImportance.HIGH,
-      sound: soundName, // ✅ notification level pe bhi sound set karo
+          pressAction: { id: 'default' },
+          importance: AndroidImportance.HIGH,
+          sound: soundName, // ✅ notification level pe bhi sound set karo
         },
         data: remoteMessage.data,
       });
@@ -1567,7 +1589,7 @@ private static async ensureChannel(
       // Resolve iOS sound — strip extension, Notifee expects just the resource name
       const iosSound = soundName === 'default' ? 'default' : soundRaw;
 
-      log('📢 notifee display sound calling...',iosSound);
+      log('📢 notifee display sound calling...', iosSound);
 
       await notifee.displayNotification({
         title,
@@ -1606,7 +1628,10 @@ private static async ensureChannel(
    * Also ensures the URL ends with a trailing slash so appId is always
    * correctly appended (e.g. baseUrl + appId + '/users').
    */
-  private static enforceHttps(url: string, ensureTrailingSlash = false): string {
+  private static enforceHttps(
+    url: string,
+    ensureTrailingSlash = false
+  ): string {
     if (url.startsWith('http://')) {
       logError(
         `Insecure URL rejected: "${url}". NotifySphere only allows HTTPS endpoints.`
@@ -1668,5 +1693,3 @@ private static async ensureChannel(
 }
 
 export default NotifySphere;
-
-
