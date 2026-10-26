@@ -277,13 +277,55 @@ export default function App() {
       }
     });
 
-    // Clean up listeners on unmount / logout
+    // Clean up listeners on unmount (local only — use logout() on sign-out)
     return () => NotifySphere.destroy();
   }, []);
 }
 ```
 
 > **Security note:** Never commit your `API_TOKEN` to source control. In production, read it from a secure config file or environment variable (e.g. via `react-native-config`).
+
+### Sign-out and account switching
+
+The device's push subscription is linked server-side to the `applicationUserId` it was registered with. `destroy()` only removes local listeners — it does **not** unlink the device. If a second user signs in on the same device without a `logout()` first, the device can keep receiving the first user's pushes and segment/tag targeting.
+
+Call `logout()` on sign-out, then `initialize()` with the new user on sign-in:
+
+```tsx
+// On sign-out
+async function onSignOut() {
+  await NotifySphere.logout(); // unsubscribes this device server-side, deletes the FCM token, clears cached state
+  // ...clear your own session
+}
+
+// On sign-in (same device, any user)
+async function onSignIn(user: { id: number; name: string; email: string }) {
+  await NotifySphere.initialize({
+    applicationUserId: user.id, // the NEW user's ID
+    type: PUSH_TYPE,
+    appId: APP_ID,
+    apiKey: API_TOKEN,
+    name: user.name,
+    email: user.email,
+  });
+
+  // Tags set here belong to the new user only
+  await NotifySphere.updateTags({
+    applicationUserId: user.id,
+    type: PUSH_TYPE,
+    tags: { plan: 'pro' },
+  });
+}
+```
+
+What `logout()` does:
+
+1. Removes all listeners (same as `destroy()`), so a background token refresh can't re-register the signed-out user.
+2. Marks this device's subscription as unsubscribed on the server (`POST {baseUrl}{appId}/logout`).
+3. Deletes the FCM token, so the next `initialize()` gets a fresh token and the old one stops receiving pushes even if step 2 failed (e.g. offline sign-out).
+4. Clears the cached token, `subscription_id`, and user hash, so the next `initialize()` always re-registers.
+
+`logout()` never throws; failures are logged. Call it **before** clearing your own auth state, while `initialize()`'s `appId`/`apiKey` are still loaded in this app session.
 
 ---
 
@@ -481,9 +523,26 @@ await NotifySphere.postEvent({
 
 ---
 
+### `NotifySphere.logout(params?)`
+
+Detaches this device from the current user. Call on sign-out, then `initialize()` with the next user's `applicationUserId` on sign-in. See [Sign-out and account switching](#sign-out-and-account-switching).
+
+```ts
+await NotifySphere.logout();
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `deleteToken` | `boolean` | | Delete the FCM token so the next sign-in registers a fresh one. Default `true` |
+| `appId` | `string` | | Defaults to the `appId` passed in `initialize()` |
+
+**Returns:** `Promise<void>` — never rejects; errors are logged.
+
+---
+
 ### `NotifySphere.destroy()`
 
-Unsubscribes all active listeners and resets internal state. Call this on logout or when you no longer need notifications.
+Unsubscribes all active listeners and resets internal state. Local only — the device stays linked to the user on the server. On sign-out, use [`logout()`](#notifyspherelogoutparams) instead.
 
 ```ts
 NotifySphere.destroy();

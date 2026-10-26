@@ -1206,7 +1206,8 @@ log('initialize2')
 }
   /**
    * Unsubscribes all active listeners and resets internal state.
-   * Call this when you want to stop receiving notifications (e.g. on logout).
+   * This is local only — the device stays linked to the user server-side.
+   * Use `logout()` on sign-out to detach the device from the user.
    */
   static destroy(): void {
     for (const unsub of NotifySphere.unsubscribers) {
@@ -1215,6 +1216,84 @@ log('initialize2')
     NotifySphere.unsubscribers = [];
     NotifySphere.initialized = false;
     log('NotifySphere destroyed — all listeners removed');
+  }
+
+  // ─── Logout ──────────────────────────────────────────────────────────────
+
+  /**
+   * Detaches this device from the current user. Call on sign-out.
+   *
+   * 1. Removes listeners (so a token refresh can't re-register the old user).
+   * 2. Marks this device's subscription as unsubscribed on the server.
+   * 3. Deletes the FCM token (default) so the next sign-in gets a fresh token
+   *    and the old one can no longer receive pushes.
+   * 4. Clears the cached token, subscription_id and user hash so the next
+   *    `initialize()` always re-registers.
+   *
+   * After this, call `initialize()` with the new user's `applicationUserId`.
+   * Never throws — failures are logged and local state is still cleared.
+   */
+  static async logout(params?: {
+    /** Delete the FCM token so the next sign-in registers a new one. Default: true */
+    deleteToken?: boolean;
+    /** Falls back to the appId provided in initialize() */
+    appId?: string;
+  }): Promise<void> {
+    const appId = params?.appId ?? NotifySphere.appId;
+    const shouldDeleteToken = params?.deleteToken ?? true;
+
+    NotifySphere.destroy();
+
+    const subscriptionId =
+      NotifySphere.subscriptionId ??
+      (await AsyncStorage.getItem(STORAGE_KEY_SUB_ID).catch(() => null));
+
+    if (!appId) {
+      warn('appId missing — cannot unregister device on server');
+    } else if (!subscriptionId) {
+      warn('subscription_id missing — nothing to unregister on server');
+    } else {
+      try {
+        const res = await axios.post(
+          `${NotifySphere.baseUrl}${appId}/logout`,
+          { subscription_id: subscriptionId },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(NotifySphere.apiKey
+                ? { Authorization: `Bearer ${NotifySphere.apiKey}` }
+                : {}),
+            },
+            timeout: 10000,
+          }
+        );
+        log('Logout response:', res.data);
+      } catch (err) {
+        logError('Error unregistering device on logout:', err);
+      }
+    }
+
+    if (shouldDeleteToken) {
+      try {
+        await messaging().deleteToken();
+        log('FCM token deleted');
+      } catch (err) {
+        warn('Failed to delete FCM token:', err);
+      }
+    }
+
+    NotifySphere.fcmToken = null;
+    NotifySphere.subscriptionId = null;
+    try {
+      await AsyncStorage.multiRemove([
+        STORAGE_KEY_TOKEN,
+        STORAGE_KEY_SUB_ID,
+        STORAGE_KEY_USER_HASH,
+      ]);
+    } catch (err) {
+      warn('Failed to clear cached user state:', err);
+    }
+    log('NotifySphere logout complete');
   }
 
   // ─── Private: listeners ───────────────────────────────────────────────────
