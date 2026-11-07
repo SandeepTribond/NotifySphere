@@ -661,6 +661,17 @@ Pass `debug: true` (or `debug: __DEV__`) to `initialize()` to see verbose `[Noti
 await NotifySphere.initialize({ ..., debug: __DEV__ });
 ```
 
+### More troubleshooting guides
+
+Step-by-step fixes for common push errors, on the notifySphere blog:
+
+- [No APNS token specified before fetching FCM token](https://notifysphere.net/blog/no-apns-token-specified-before-fetching-fcm-token?utm_source=github&utm_medium=readme) (iOS)
+- [APNs BadDeviceToken (400): sandbox vs production](https://notifysphere.net/blog/apns-bad-device-token?utm_source=github&utm_medium=readme) (iOS)
+- [FCM UNREGISTERED: Requested entity was not found](https://notifysphere.net/blog/fcm-unregistered-token?utm_source=github&utm_medium=readme)
+- [FCM SENDER_ID_MISMATCH and messaging/mismatched-credential](https://notifysphere.net/blog/fcm-sender-id-mismatch?utm_source=github&utm_medium=readme)
+- [POST_NOTIFICATIONS: Android 13 notification permission](https://notifysphere.net/blog/android-13-notification-permission?utm_source=github&utm_medium=readme)
+- [React Native push notifications: full setup guide](https://notifysphere.net/blog/react-native-push-notifications?utm_source=github&utm_medium=readme)
+
 ---
 
 ## Version History
