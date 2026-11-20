@@ -10,7 +10,7 @@ import notifee, {
 } from '@notifee/react-native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { PermissionsAndroid, Platform } from 'react-native';
+import { AppState, PermissionsAndroid, Platform } from 'react-native';
 
 const STORAGE_KEY_TOKEN = '@notifysphere_fcm_token';
 const STORAGE_KEY_SUB_ID = '@notifysphere_subscription_id';
@@ -172,6 +172,28 @@ interface DeviceInfoResult {
 const DEFAULT_BASE_URL = 'https://api.notifysphere.in/client/';
 // const DEFAULT_BASE_URL = 'https://apinotify.dothejob.in/client';
 
+// ─── Session ID ───────────────────────────────────────────────────────────────
+
+/**
+ * Generates a unique session id: `<timestamp-hex>-<random UUID v4>`.
+ *
+ * - The timestamp prefix (ms since epoch, hex) means two ids can only collide
+ *   if they are created in the exact same millisecond AND the 122 random bits
+ *   also match, which is practically impossible.
+ * - No native/crypto dependency, so it works in Hermes, JSC and the headless
+ *   background task alike.
+ *
+ * Example: `19a8c3f2b1e-3f9c1d52-7a4b-4c8e-9d21-5e6f7a8b9c0d` (47 chars)
+ */
+const generateSessionId = (): string => {
+  const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+  return `${Date.now().toString(16)}-${uuid}`;
+};
+
 // ─── NotifySphere class ───────────────────────────────────────────────────────
 
 class NotifySphere {
@@ -186,6 +208,48 @@ class NotifySphere {
   private static unsubscribers: Array<() => void> = [];
   private static initialized = false;
   private static createdChannels = new Set<string>();
+  /**
+   * One session id per app launch, sent with every registration and event.
+   * Created when the JS bundle loads. Coming back from the background keeps
+   * the same id; a fresh app launch gets a new one.
+   */
+  private static sessionId: string = generateSessionId();
+  /**
+   * False when the bundle was loaded without UI (a push woke the app in the
+   * background). The first time the app then really opens, a new session id
+   * is created, so a user opening the app hours later does not inherit the id
+   * of that background wake-up.
+   */
+  private static sessionFromForeground = AppState.currentState === 'active';
+  /** @internal Keeps the AppState subscription for the session id alive. */
+  static readonly sessionWatcher = AppState.addEventListener(
+    'change',
+    (state) => {
+      if (state === 'active') NotifySphere.renewSessionIfFirstOpen();
+    }
+  );
+
+  /**
+   * Starts a new session the first time the app is really open after a
+   * background-only launch. Called from the AppState listener and at the start
+   * of initialize()/postEvent(), because the app's first render (and its
+   * initialize() call) can run before the 'active' event arrives.
+   */
+  private static renewSessionIfFirstOpen(): void {
+    if (
+      !NotifySphere.sessionFromForeground &&
+      AppState.currentState === 'active'
+    ) {
+      NotifySphere.sessionId = generateSessionId();
+      NotifySphere.sessionFromForeground = true;
+      log('New session on first app open:', NotifySphere.sessionId);
+    }
+  }
+
+  /** Returns the current session id (stable for this app launch). */
+  static getSessionId(): string {
+    return NotifySphere.sessionId;
+  }
 
   // ─── Press tracking ──────────────────────────────────────────────────────
 
@@ -195,8 +259,16 @@ class NotifySphere {
    */
   static async callbackOnpress(
     notification: FirebaseRemoteMessage | NotifeeNotification,
-    status: string
+    status: string,
+    actionId?: string
   ): Promise<void> {
+    // Tapping a notification while the app is killed fires Notifee's
+    // background event before initialize() has set the tracking URL.
+    // getInitialNotification() in initialize() tracks that tap instead.
+    if (!NotifySphere.trackingUrl) {
+      log('Press before initialize(); tracked after initialize() instead');
+      return;
+    }
     try {
       const notificationId =
         (notification as FirebaseRemoteMessage).data?.notification_id ??
@@ -215,12 +287,13 @@ class NotifySphere {
           notification_id: notificationId,
           subscription_id: NotifySphere.subscriptionId,
           onPressStatus: 1,
+          ...(actionId ? { action_id: actionId } : {}),
         },
         { headers, maxBodyLength: 1024 * 50, timeout: 10000 }
       );
 
       log('onPress tracking response:', response.data);
-      NotifySphere.sendCallback(notification, status);
+      NotifySphere.sendCallback(notification, status, actionId);
     } catch (err) {
       logError('Error in callbackOnpress:', err);
     }
@@ -427,6 +500,7 @@ class NotifySphere {
     config: InitializeConfig
   ): Promise<string | undefined> {
     _debug = config.debug ?? false;
+    NotifySphere.renewSessionIfFirstOpen();
     NotifySphere.appId = config.appId;
     NotifySphere.baseUrl = NotifySphere.enforceHttps(
       config.baseUrl ?? DEFAULT_BASE_URL,
@@ -532,9 +606,12 @@ class NotifySphere {
       NotifySphere.postEvent({
         event: 'initialize_start',
         appId: config.appId,
+        // Marks the start of a session (postEvent adds session_id and
+        // subscription_id). Never send the config: it holds the API key and
+        // the end user's personal data.
         data: {
-          config,
-          subscriptionId: 'aea4d918e07921f1e2bce8bc606fa5ba6bd1ea7b7f7c6304',
+          sdk_version: SDK_VERSION,
+          platform: Platform.OS,
         },
       });
 
@@ -616,6 +693,7 @@ class NotifySphere {
         applicationUserId: config.applicationUserId,
         token: fcmToken,
         type: config.type,
+        session_id: NotifySphere.sessionId,
         user: {
           userName: config.name,
           lat: config.lat,
@@ -728,6 +806,7 @@ class NotifySphere {
     appId?: string;
     data?: any;
   }): Promise<unknown> {
+    NotifySphere.renewSessionIfFirstOpen();
     log('NotifysphareEventParams0', params);
     const appId = params.appId ?? NotifySphere.appId;
 
@@ -737,7 +816,6 @@ class NotifySphere {
     }
     log('NotifysphareEventParams1', params, NotifySphere.subscriptionId);
     // if (!NotifySphere.subscriptionId) {
-    //      console.log('subscriptionId not found',NotifySphere.subscriptionId)
 
     //   warn('subscription_id missing — cannot post event (call initialize() first)');
     //   return null;
@@ -748,6 +826,7 @@ class NotifySphere {
     try {
       const body: Record<string, any> = {
         event: params.event,
+        session_id: NotifySphere.sessionId,
         subscription_id: NotifySphere.subscriptionId,
       };
 
@@ -1171,8 +1250,21 @@ class NotifySphere {
             }
           }
 
-          // Background / terminated: display is the OS's job (FCM/APNs).
-          // This handler only fires the delivery confirmation API.
+          // Background / terminated: when the push has a `notification` block,
+          // the OS (FCM/APNs) shows it and we only confirm delivery. Pushes with
+          // action buttons are sent data-only (the OS can't draw custom
+          // buttons), so the SDK must draw those itself or nothing is shown.
+          if (!msg?.notification && (msg?.data?.title || msg?.data?.body)) {
+            try {
+              await NotifySphere.displayLocalNotification(msg);
+            } catch (err) {
+              logError(
+                'setBackgroundHandler: failed to display data-only message:',
+                err
+              );
+            }
+          }
+
           try {
             await NotifySphere.callbackOnDelivery(msg);
           } catch (err) {
@@ -1201,6 +1293,16 @@ class NotifySphere {
             await NotifySphere.callbackOnpress(
               detail.notification as NotifeeNotification,
               'press'
+            );
+          } else if (
+            type === EventType.ACTION_PRESS &&
+            detail?.notification &&
+            detail.pressAction?.id
+          ) {
+            await NotifySphere.callbackOnpress(
+              detail.notification as NotifeeNotification,
+              'action',
+              detail.pressAction.id
             );
           }
         } catch (err) {
@@ -1377,8 +1479,34 @@ class NotifySphere {
           detail.notification as NotifeeNotification,
           'opened'
         );
+      } else if (
+        type === EventType.ACTION_PRESS &&
+        detail.notification &&
+        detail.pressAction?.id
+      ) {
+        NotifySphere.callbackOnpress(
+          detail.notification as NotifeeNotification,
+          'action',
+          detail.pressAction.id
+        );
       }
     });
+
+    // App started by tapping a notification the SDK drew itself (data-only
+    // push, e.g. with action buttons) while the app was terminated. FCM's
+    // getInitialNotification() above only covers notifications the OS drew.
+    notifee
+      .getInitialNotification()
+      .then((initial) => {
+        if (!initial?.notification) return;
+        const actionId = initial.pressAction?.id;
+        NotifySphere.callbackOnpress(
+          initial.notification as NotifeeNotification,
+          actionId && actionId !== 'default' ? 'action' : 'initial',
+          actionId && actionId !== 'default' ? actionId : undefined
+        );
+      })
+      .catch((err) => logError('notifee getInitialNotification error:', err));
 
     // ✅ Teeno unsubscribers push karo
     NotifySphere.unsubscribers.push(unsubMessage, unsubOpened, unsubForeground);
@@ -1565,6 +1693,13 @@ class NotifySphere {
           ? ({ type: AndroidStyle.BIGTEXT, text: body } as const)
           : undefined;
 
+      const actions = NotifySphere.parseActionButtons(
+        remoteMessage.data?.actionButtons
+      ).map((btn) => ({
+        title: btn.label,
+        pressAction: { id: btn.id, launchActivity: 'default' },
+      }));
+
       await notifee.displayNotification({
         title,
         body,
@@ -1574,6 +1709,7 @@ class NotifySphere {
           largeIcon: largeIconResolved,
           style: androidStyle,
           pressAction: { id: 'default' },
+          ...(actions.length ? { actions } : {}),
           importance: AndroidImportance.HIGH,
           sound: soundName, // ✅ notification level pe bhi sound set karo
         },
@@ -1610,6 +1746,37 @@ class NotifySphere {
         data: remoteMessage.data,
       });
     }
+  }
+
+  /**
+   * Reads the `actionButtons` JSON the server puts in `data` and returns
+   * [{ id, label }]. The label is the plain text the sender typed; HTML in
+   * an older `title` field is stripped. Bad JSON returns [].
+   */
+  private static parseActionButtons(
+    raw: unknown
+  ): Array<{ id: string; label: string }> {
+    let list: unknown = raw;
+    if (typeof list === 'string') {
+      try {
+        list = JSON.parse(list);
+      } catch {
+        return [];
+      }
+    }
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((b) => b && typeof b === 'object' && String(b.id || '').trim())
+      .map((b) => {
+        const fromTitle = String(b.title || '')
+          .replace(/<[^>]*>/g, '')
+          .replace(/&#\d+;/g, '')
+          .trim();
+        return {
+          id: String(b.id),
+          label: String(b.label || fromTitle || b.id).trim(),
+        };
+      });
   }
 
   /**
@@ -1654,7 +1821,8 @@ class NotifySphere {
    */
   private static sendCallback(
     notification: FirebaseRemoteMessage | NotifeeNotification,
-    type?: string
+    type?: string,
+    actionId?: string
   ): void {
     if (!NotifySphere.callback) return;
 
@@ -1688,6 +1856,7 @@ class NotifySphere {
       sound = notif.data?.sound;
     }
 
+    if (actionId) data = { ...(data ?? {}), actionId };
     NotifySphere.callback({ title, body, data, image, sound }, type);
   }
 }
