@@ -147,7 +147,7 @@ const logError = (...args: unknown[]) =>
 
 // ─── SDK version ──────────────────────────────────────────────────────────────
 
-const SDK_VERSION = '1.2.6';
+const SDK_VERSION = '1.3.1';
 
 // ─── Device info result shape ─────────────────────────────────────────────────
 
@@ -663,10 +663,11 @@ class NotifySphere {
       NotifySphere.postEvent({
         event: 'initialize_error',
         appId: config.appId,
+        // Never send the config: it holds the API key and personal data.
         data: {
-          config,
-          subscriptionId: 'aea4d918e07921f1e2bce8bc606fa5ba6bd1ea7b7f7c6304',
-          error: JSON.stringify(err),
+          sdk_version: SDK_VERSION,
+          platform: Platform.OS,
+          error: err instanceof Error ? err.message : String(err),
         },
       });
 
